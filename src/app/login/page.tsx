@@ -1,9 +1,11 @@
-import logoImage from 'figma:asset/8e191f727b2ef8023e7e4984e9036f679c3d3038.png';
+'use client'
+
 import { supabase } from '@/lib/createClient';
 import React, { useState } from "react";
-import { useNavigate } from 'react-router-dom';
-import { HomePage } from './HomePage';
+import { useRouter } from 'next/navigation';
+import LandingPage from '../dashboard/page';
 import { Eye } from 'lucide-react';
+import Image from 'next/image'
 
 // const [users, setUsers] = useState<any[]>([]);
 //   console.log(users)
@@ -14,12 +16,14 @@ import { Eye } from 'lucide-react';
 //       setUsers(data || [])
 //   }
 
-export function LoginSignupModal() {
+export default function LoginSignupModal() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -36,7 +40,7 @@ export function LoginSignupModal() {
       alert("Login Failed " + error.message);
     } else {
       alert("Login Successful");
-      navigate('/home');
+      router.push('/homepage');
     }
   }
 
@@ -45,8 +49,7 @@ export function LoginSignupModal() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "http://localhost:3000/home",
-        
+        redirectTo: "http://localhost:3000/homepage",
       },
     });
 
@@ -54,15 +57,20 @@ export function LoginSignupModal() {
       alert("Error: " + error.message);
     }
   }
-  
-  const navigate = useNavigate();
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-[#309898]/20 via-white to-[#FF8000]/20 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative border-4 border-[#309898]">
         {/* Logo */}
         <div className="flex justify-center mb-6">
-          <img src={logoImage} alt="Vytara Logo" className="w-24 h-24" />
+            <Image
+                src="/vytara-logo.png"
+                alt="Vytara Logo"
+                width={96}
+                height={96}
+                className='w-24 h-24'
+                priority
+            />
         </div>
         
         <h1 className="text-center text-[#309898] mb-2">Vytara</h1>
@@ -73,7 +81,7 @@ export function LoginSignupModal() {
             <label className="block text-[#309898] mb-2">Email</label>
             <input
               type="text"
-              className="w-full px-4 py-3 rounded-lg border-2 border-[#309898]/30 focus:border-[#FF8000] focus:outline-none transition"
+              className="w-full px-4 py-3 rounded-lg border-2 border-[#309898]/30 focus:border-[#FF8000] focus:outline-none transition text-gray-800"
               placeholder="Enter your Email"
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -85,7 +93,7 @@ export function LoginSignupModal() {
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"}
-              className="w-full px-4 py-3 rounded-lg border-2 border-[#309898]/30 focus:border-[#FF8000] focus:outline-none transition"
+              className="w-full px-4 py-3 rounded-lg border-2 border-[#309898]/30 focus:border-[#FF8000] focus:outline-none transition text-gray-800"
               placeholder="Enter your Password"
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -122,13 +130,13 @@ export function LoginSignupModal() {
 
 
           <div className="flex justify-between text-sm mt-4">
-            <button type="button" className="text-[#FF8000] hover:underline cursor-pointer" onClick={() => navigate("/forgotpassword")}>
+            <button type="button" className="text-[#FF8000] hover:underline cursor-pointer" onClick={() => router.push('/forgotpassword')}>
               Forgot Password?
             </button>
             <button
               type="button"
               className="text-[#309898] hover:underline cursor-pointer"
-              onClick={() => navigate('/signup')}
+              onClick={() => router.push('/signup')}
             >
               Sign Up
             </button>
