@@ -60,8 +60,10 @@ export default function LoginSignupModal() {
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-[#309898]/20 via-white to-[#FF8000]/20 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative border-4 border-[#309898]">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#309898] to-[#FF8000]"></div>
         {/* Logo */}
+        <div className="p-8">
         <div className="flex justify-center mb-6">
             <Image
                 src="/vytara-logo.png"
@@ -142,6 +144,7 @@ export default function LoginSignupModal() {
             </button>
           </div>
         </form>
+      </div>
       </div>
     </div>
   );

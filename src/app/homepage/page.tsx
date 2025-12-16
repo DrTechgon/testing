@@ -57,10 +57,8 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* Service Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {/* <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
 
-          {/* Card 1 */}
           <div className="cursor-pointer">
             <div className="bg-white rounded-3xl shadow-xl p-6 border-2 hover:shadow-2xl transition-all" style={{ borderColor: '#006770' }}>
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto" style={{ backgroundColor: 'rgba(255, 127, 80, 0.2)' }}>
@@ -70,7 +68,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Card 2 */}
           <div className="cursor-pointer">
             <div className="bg-white rounded-3xl shadow-xl p-6 border-2 hover:shadow-2xl transition-all" style={{ borderColor: '#00838B' }}>
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto" style={{ backgroundColor: 'rgba(255, 127, 80, 0.2)' }}>
@@ -80,7 +77,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Card 3 */}
           <div className="cursor-pointer">
             <div className="bg-white rounded-3xl shadow-xl p-6 border-2 hover:shadow-2xl transition-all" style={{ borderColor: '#006770' }}>
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto" style={{ backgroundColor: 'rgba(255, 127, 80, 0.2)' }}>
@@ -90,7 +86,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Card 4 */}
           <div className="cursor-pointer">
             <div className="bg-white rounded-3xl shadow-xl p-6 border-2 hover:shadow-2xl transition-all" style={{ borderColor: '#00838B' }}>
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto" style={{ backgroundColor: 'rgba(255, 127, 80, 0.2)' }}>
@@ -100,7 +95,7 @@ export default function HomePage() {
             </div>
           </div>
 
-        </div>
+        </div> */}
 
         {/* Calendar Section */}
         <div className="mt-10 bg-gray-50 p-4 sm:p-6 rounded-xl border border-gray-100">

@@ -23,15 +23,15 @@ export default function Verified() {
         
         {/* Message */}
         <p className="text-center text-gray-600 mb-8">
-          Your account has been successfully verified. You can now continue to the login page.
+          Your account has been successfully verified. You can now continue to the Medical Form and Fill out your Information.
         </p>
         
         {/* Button */}
         <span
-          onClick={() => {router.push('/login')}}
+          onClick={() => {router.push('/medicalinfoform-1')}}
           className="block w-full bg-gradient-to-r from-[#309898] to-[#FF8000] text-white py-3 rounded-lg hover:shadow-lg transition transform hover:scale-105 text-center font-semibold"
         >
-          Login
+          Fill Medical Form
         </span>
       </div>
     </div>
