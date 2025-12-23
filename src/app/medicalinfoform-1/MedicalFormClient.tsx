@@ -27,11 +27,11 @@ export default function MedicalInfoFormUI() {
     { name: "", phone: "", relation: "" },
   ]);
 
-  useEffect(() => {
-    if (!loadingUser && !user){
-      router.replace("/login");
-    }
-  }, [loadingUser, user, router]);
+  // useEffect(() => {
+  //   if (!loadingUser && !user){
+  //     router.replace("/login");
+  //   }
+  // }, [loadingUser, user, router]);
   
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
