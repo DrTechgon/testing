@@ -137,6 +137,7 @@ export function MedicalInfoFormUI() {
   const [bmi, setBmi] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [address, setAddress] = useState("");
+  const [loadingUser, setLoadingUser] = useState(true);
   const [emergencyContact, setEmergencyContact] = useState([
     { name: "", phone: "", relation: "" },
   ]);
