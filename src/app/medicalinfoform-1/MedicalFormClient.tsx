@@ -115,18 +115,22 @@ import Image from "next/image";
 export default function MedicalInfoFormUI() {
 
   const [userId , setUserId] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     async function getUser() {
       const { data } = await supabase.auth.getUser();
-      if (data.user){
-        setUserId(data.user.id)
-      } 
+      
+      if (!data.user){
+        router.replace("/login");
+        return;
+      }
+
+      setUserId(data.user.id);
+      setLoadingUser(false);
     }
     getUser();
-  }, [])
-  
-  const router = useRouter();
+  }, [router])
 
   const [fullName, setFullName] = useState("");
   const [dob, setDob] = useState("");
@@ -159,6 +163,11 @@ export default function MedicalInfoFormUI() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    if (!userId) {
+      alert("User session not ready, Please wait");
+      return;
+    }
+
     // const height_in_m = Number(height) / 100;
     // const calc_bmi = Number(weight) / (height_in_m * height_in_m);
     // setBmi(calc_bmi.toFixed(1));
@@ -180,13 +189,14 @@ export default function MedicalInfoFormUI() {
 
     const { error } = await supabase
       .from("profiles")
-      .insert({
+      .upsert({
         user_id: userId, 
         personal: personalData 
-      })
+      });
 
     if (error) {
-      alert("Error: " + error.message);
+      console.error(error);
+      alert(error.message);
     } else {
       router.push("/healthinfoform");
     }
