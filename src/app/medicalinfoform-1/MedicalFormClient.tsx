@@ -131,29 +131,29 @@ export default function MedicalInfoFormUI() {
     { name: "", phone: "", relation: "" },
   ]);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      const { data, error } = await supabase.auth.getSession();
+  // useEffect(() => {
+  //   const fetchUser = async () => {
+  //     const { data, error } = await supabase.auth.getSession();
 
-      if (error){
-        console.error("Session Error: ", error);
-        setLoadingUser(false);  
-        return; 
-      }
+  //     if (error){
+  //       console.error("Session Error: ", error);
+  //       setLoadingUser(false);  
+  //       return; 
+  //     }
 
-      const user = data.session?.user;
+  //     const user = data.session?.user;
 
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+  //     if (!user) {
+  //       router.replace("/login");
+  //       return;
+  //     }
 
-      setUserId(user.id);
-      setLoadingUser(false);
-    };
+  //     setUserId(user.id);
+  //     setLoadingUser(false);
+  //   };
 
-    fetchUser();
-  }, [router]);
+  //   fetchUser();
+  // }, [router]);
 
   useEffect(() => {
     const h = Number(height);
