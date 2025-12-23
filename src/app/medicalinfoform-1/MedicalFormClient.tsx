@@ -132,6 +132,30 @@ export default function MedicalInfoFormUI() {
   ]);
 
   useEffect(() => {
+    const fetchUser = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error){
+        console.error("Session Error: ", error);
+        setLoadingUser(false);  
+        return; 
+      }
+
+      const user = data.session?.user;
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      setUserId(user.id);
+      setLoadingUser(false);
+    };
+
+    fetchUser();
+  }, [router]);
+
+  useEffect(() => {
     const h = Number(height);
     const w = Number(weight);
     if (!h || !w){
@@ -177,7 +201,9 @@ export default function MedicalInfoFormUI() {
       .upsert({
         user_id: userId, 
         personal: personalData 
-      });
+      },
+      { onConflict: "user_id" }
+    );
 
     if (error) {
       console.error(error);
