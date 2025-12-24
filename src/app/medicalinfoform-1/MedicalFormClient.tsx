@@ -186,7 +186,7 @@ export default function MedicalInfoFormUI() {
       console.error(error);
       alert(error.message);
     } else {
-      router.push("/healthinfoform");
+      router.push("/medicalinfoform-2");
     }
   };
 
