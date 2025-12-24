@@ -144,6 +144,23 @@ export default function MedicalInfoFormUI() {
     }
   }, [height, weight]);
 
+  useEffect(() => {
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+
+      if (error) {
+        console.error("Auth error:", error);
+        return;
+      }
+
+      if (data?.user) {
+        setUserId(data.user.id);
+      }
+    };
+
+    getUser();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
