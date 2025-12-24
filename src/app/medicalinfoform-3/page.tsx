@@ -9,16 +9,6 @@ import Image from "next/image";
 export default function PastMedicalHistoryUI() {
   const router = useRouter();
 
-  const [userId, setUserId] = useState("");
-
-  useEffect(() => {
-    async function getUser() {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) setUserId(data.user.id);
-    }
-    getUser();
-  }, []);
-
   // STATES
   const [diagnosedCondition, setDiagnosedCondition] = useState([""]);
   const [pastSurgeries, setPastSurgeries] = useState([{ name: "", date: "" }]);
@@ -31,6 +21,16 @@ export default function PastMedicalHistoryUI() {
   const handlePastMedical = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    const { 
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser();
+
+    if (authError || !user){
+      router.push("/login");
+      return;
+    } 
+    
     const pastData = {
         diagnosedCondition,
         pastSurgeries,
@@ -43,7 +43,7 @@ export default function PastMedicalHistoryUI() {
     const { error } = await supabase
         .from("profiles")
         .update( { past_medical_info: pastData } )
-        .eq("user_id", userId)
+        .eq("user_id", user.id)
 
     if (error) {
         alert("Error: " + error.message);

@@ -10,15 +10,6 @@ import Image from "next/image";
 
 export default function FamilyMedicalHistoryUI() {
   const router = useRouter();
-  const [userId, setUserId] = useState("");
-
-  useEffect(() => {
-    async function getUser() {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) setUserId(data.user.id);
-    }
-    getUser();
-  }, []);
 
   // STATE
   const [familyMedicalHistory, setFamilyMedicalHistory] = useState([
@@ -28,6 +19,16 @@ export default function FamilyMedicalHistoryUI() {
   const handlesubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user){
+      router.push("/login");
+      return;
+    }
+
     const familyData = {
         familyMedicalHistory
     }
@@ -35,7 +36,7 @@ export default function FamilyMedicalHistoryUI() {
     const { error } = await supabase
         .from("profiles")
         .update( {family_history: familyData} )
-        .eq("user_id", userId)
+        .eq("user_id", user.id)
 
     if (error) {
         alert("Erorr: " + error.message);
