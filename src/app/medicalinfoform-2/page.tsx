@@ -8,7 +8,6 @@ import Image from "next/image";
 
 export default function HealthInfoFormUI() {
   const router = useRouter();
-  const [userId, setUserId] = useState('');
   const [conditions, setConditions] = useState([""]);
   const [currentMedications, setCurrentMedications] = useState([
     { name: "", dosage: "", frequency: "", purpose: "" },
@@ -19,18 +18,18 @@ export default function HealthInfoFormUI() {
     { name: "", phone: "", speciality: "" }
   ]);
 
-  useEffect(() => {
-    async function getUser() {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        setUserId(data.user.id);
-      }
-    }
-    getUser();
-  }, []);
-
   const handleNext = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user){
+      router.push("/login");
+      return;
+    }
 
     const healthData = {
       conditions,
@@ -43,7 +42,7 @@ export default function HealthInfoFormUI() {
     const { error } = await supabase
       .from("profiles")
       .update({ health: healthData })
-      .eq("user_id", userId);
+      .eq("user_id", user.id);
 
     if (error) {
       alert("Error: " + error.message);
