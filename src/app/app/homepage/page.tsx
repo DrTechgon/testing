@@ -13,41 +13,6 @@ from-[hsla(169,100%,50%,1)]
 via-[hsla(150,75%,70%,1)]
 to-[hsla(67,70%,75%,1)] */}
       {/* Header */}
-      <header 
-        className="sticky top-0 z-40 border-b border-white/20 shadow-sm"
-        style={{ background: 'linear-gradient(90deg, #006770 0%, #00838B 40%, #00A3A9 100%)' }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center shadow-md p-2">
-              <Image
-                src="/vytara-logo.png"
-                alt="Vytara Logo"
-                width={96}
-                height={96}
-                className="w-24 h-24"
-                priority
-              />
-            </div>
-            <h1 className="hidden sm:block text-xl font-bold text-white tracking-wide">Vytara</h1>
-          </div>
-
-          {/* Header Buttons */}
-          <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-lg font-semibold text-xs sm:text-sm border border-purple-400/30">
-              <Sparkles className="w-4 h-4" />
-              <span>Get Summary</span>
-            </button>
-
-            <button className="p-2 text-white hover:bg-white/20 rounded-lg flex items-center justify-center transition border border-white/30 bg-white/10 backdrop-blur-sm">
-              <Menu className="w-6 h-6 sm:w-7 sm:h-7" />
-            </button>
-          </div>
-
-        </div>
-      </header>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
