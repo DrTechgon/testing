@@ -206,7 +206,7 @@ export default function LandingPage() {
             </button>
 
             <button
-              onClick={() => {router.push('/auth/login')}}
+              onClick={() => {router.push('/login')}}
               style={{
                 marginLeft: 6,
                 background: 'transparent',
@@ -220,7 +220,7 @@ export default function LandingPage() {
             </button>
 
             <button
-              onClick={() => {router.push('/auth/signup')}}
+              onClick={() => {router.push('/signup')}}
               style={{
                 marginLeft: 8,
                 background: `linear-gradient(90deg, ${COLORS.amberStart}, ${COLORS.amberEnd})`,
