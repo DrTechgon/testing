@@ -23,8 +23,9 @@ export default function CallbackClient() {
         .single();
 
       if (!profile || error) {
-        alert('Your account does not exist. Please sign up first.');
-        router.push('/signup');
+        await supabase.auth.signOut();
+        alert("Your account does not exist. Please sign up first");
+        router.push("/signup");
         return;
       }
 
