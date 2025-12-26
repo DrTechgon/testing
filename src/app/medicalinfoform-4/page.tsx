@@ -44,7 +44,7 @@ export default function FamilyMedicalHistoryUI() {
     if (error) {
         alert("Erorr: " + error.message);
     } else {
-        router.push('/homepage')
+        router.push('/app/homepage')
     }
   }
 
