@@ -47,7 +47,7 @@ export default function ForgotPassword() {
         </div>
 
         {/* Title */}
-        <h1 className="text-center text-[#309898] text-3xl font-bold mb-2">
+        <h1 className="text-center text-black text-3xl font-bold mb-2">
           Forgot Password?
         </h1>
 
