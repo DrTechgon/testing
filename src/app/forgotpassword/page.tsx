@@ -26,7 +26,7 @@ export default function ForgotPassword() {
 
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {redirectTo: "http://vytara-official.vercel.app/resetpassword"})
 
-    alert("We have sent you an Email!");
+    alert("If your Email Exists then you would receive an Email!");
     setLoading(false);
   }
 
