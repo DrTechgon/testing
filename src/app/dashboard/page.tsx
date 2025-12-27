@@ -18,6 +18,10 @@ interface ChildrenProps {
   children: ReactNode;
 }
 
+interface TextChildrenProps {
+  children: string;
+}
+
 interface FeatureStackCardProps {
   children: ReactNode;
   color: string;
@@ -25,7 +29,7 @@ interface FeatureStackCardProps {
 }
 
 /* ========================= ScrollFloat ========================= */
-const ScrollFloat: React.FC<ChildrenProps> = ({ children }) => {
+const ScrollFloat: React.FC<TextChildrenProps> = ({ children }) => {
   const ref = useRef<HTMLHeadingElement | null>(null);
 
   const chars = useMemo(() => {
@@ -84,7 +88,7 @@ const ScrollFloat: React.FC<ChildrenProps> = ({ children }) => {
 };
 
 /* ========================= ScrollReveal With Title Pin + Color Sync ========================= */
-const ScrollReveal: React.FC<ChildrenProps> = ({ children }) => {
+const ScrollReveal: React.FC<TextChildrenProps> = ({ children }) => {
   const ref = useRef<HTMLHeadingElement | null>(null);
 
   const words = useMemo(
