@@ -37,7 +37,7 @@ export default function Navbar() {
           {/* Logo */}
           <div
             className="flex items-center gap-3 cursor-pointer"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/app/homepage')}
           >
             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-md p-2">
               <div className="w-full h-full bg-teal-600 rounded-full"></div>
