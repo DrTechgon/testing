@@ -282,11 +282,9 @@ export default function LoginPage() {
       return;
     }
 
-    const user = data.user;
-
     setLoading(false);
     alert('Login Successful');
-    router.push('/homepage');
+    router.push('/app/homepage');
   };
 
   const signInWithGoogle = async (e: React.MouseEvent<HTMLButtonElement>) => {
