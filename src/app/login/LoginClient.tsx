@@ -33,7 +33,7 @@ export default function LoginSignupModal() {
 
     setLoading(false);
     alert('Login Successful');
-    router.push('/homepage');
+    router.push('/app/homepage');
   };
 
   const signInWithGoogle = async (e: React.MouseEvent<HTMLButtonElement>) => {
