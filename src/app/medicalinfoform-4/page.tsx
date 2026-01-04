@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/createClient";
 
 import Image from "next/image";
+import { profile } from "console";
 
 export default function FamilyMedicalHistoryUI() {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function FamilyMedicalHistoryUI() {
         .from("profiles")
         .update( {
           family_history: familyData,
-          login_check: true
+          profile_complete: true
         } )
         .eq("user_id", user.id)
 
