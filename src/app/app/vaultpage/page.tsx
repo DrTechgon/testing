@@ -416,8 +416,18 @@ export default function VaultPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <form
             onSubmit={handleUpload}
-            className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl"
+            className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-xl"
           >
+            {/* CLOSE BUTTON */}
+            <button
+              type="button"
+              onClick={() => setShowUploadModal(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 transition"
+              aria-label="Close modal"
+            >
+              ✕
+            </button>
+
             <h3 className="text-lg font-semibold mb-4 text-gray-800">
               Upload Document
             </h3>
@@ -434,7 +444,10 @@ export default function VaultPage() {
               className="mb-4 text-gray-800"
             />
 
-            <button className="w-full py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700">
+            <button
+              type="submit"
+              className="w-full py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition"
+            >
               Upload
             </button>
           </form>
