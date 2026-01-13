@@ -5,116 +5,6 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/createClient";
 import { useEffect, useState } from "react";
 import Image from "next/image";
-
-<<<<<<< HEAD
-// export default function MedicalInfoFormUI() {
-//   const router = useRouter();
-
-//   const [user, setUser] = useState<any>(null);
-//   const [loadingUser, setLoadingUser] = useState(true);
-
-//   const [fullName, setFullName] = useState("");
-//   const [contactNumber, setContactNumber] = useState("");
-//   const [dob, setDob] = useState("");
-//   const [gender, setGender] = useState("");
-//   const [address, setAddress] = useState("");
-//   const [bloodGroup, setBloodGroup] = useState("");
-
-//   const [height, setHeight] = useState("");
-//   const [weight, setWeight] = useState("");
-//   const [bmi, setBmi] = useState("");
-
-//   const [emergencyContact, setEmergencyContact] = useState([
-//     { name: "", phone: "", relation: "" },
-//   ]);
-
-//   // useEffect(() => {
-//   //   if (!loadingUser && !user){
-//   //     router.replace("/auth/login");
-//   //   }
-//   // }, [loadingUser, user, router]);
-  
-//   useEffect(() => {
-//     supabase.auth.getSession().then(({ data }) => {
-//       setUser(data.session?.user ?? null);
-//       setLoadingUser(false);
-//     })
-//     const {
-//       data: { subscription },
-//     } = supabase.auth.onAuthStateChange((_event, session) => {
-//       setUser(session?.user ?? null);
-//       setLoadingUser(false);
-//     });
-
-//     return() => {
-//       subscription.unsubscribe();
-//     };
-//   }, []);
-
-//   // BMI calculation
-//   useEffect(() => {
-//     const h = Number(height);
-//     const w = Number(weight);
-
-//     if (!h || !w) {
-//       setBmi("");
-//       return;
-//     }
-
-//     const heightInMeters = h / 100;
-//     const calculatedBMI = w / (heightInMeters * heightInMeters);
-
-//     if (!isNaN(calculatedBMI) && isFinite(calculatedBMI)) {
-//       setBmi(calculatedBMI.toFixed(1));
-//     }
-//   }, [height, weight]);
-
-//   // Submit handler
-//   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-//     e.preventDefault();
-
-//     // 🔐 Always get auth user directly
-//     if (loadingUser){
-//       alert("Session is initializing. Please Wait.");
-//       return;
-//     }
-
-//     if (!user){
-//       alert("You are not logged in. Please Sign in again");
-//       router.replace("/auth/login");
-//       return;
-//     }
-
-//     const personalData = {
-//       fullName,
-//       dob,
-//       gender,
-//       address,
-//       emergencyContact,
-//       contactNumber,
-//       height,
-//       weight,
-//       bmi,
-//       bloodGroup,
-//     };
-
-//     const { error } = await supabase
-//       .from("profiles")
-//       .upsert({
-//         user_id: user.id,   // ✅ ALWAYS VALID
-//         personal: personalData,
-//       });
-
-//     if (error) {
-//       console.error(error);
-//       alert(error.message);
-//     } else {
-//       router.push("/medicalinfoform-2");
-//     }
-//   };
-
-=======
->>>>>>> 871de565c7ea7c40a1446799922037ca584f01a9
 export default function MedicalInfoFormUI() {
   const router = useRouter();
   
@@ -836,23 +726,11 @@ export default function MedicalInfoFormUI() {
           </form>
         )}
 
-<<<<<<< HEAD
-        {/* Navigation */}
-        <div className="flex justify-between mt-8">
-          <button
-            type="button"
-            onClick={() => router.push("/auth/signup")}
-            className="flex items-center gap-2 text-[#309898]"
-          >
-            <ChevronLeft /> Previous
-          </button>
-=======
         {/* SECTION 3 - PAST MEDICAL HISTORY */}
         {currentSection === 3 && (
           <form onSubmit={handleSection3Submit}>
             <h2 className="text-center text-[#309898] mb-2">Past Medical History</h2>
             <p className="text-center text-gray-600 mb-6">Section 3/4</p>
->>>>>>> 871de565c7ea7c40a1446799922037ca584f01a9
 
             <div className="space-y-6">
               <div className="space-y-4">
