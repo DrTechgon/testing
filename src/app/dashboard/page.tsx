@@ -519,62 +519,92 @@ export default function Landing() {
               {/* LEFT CARDS */}
               <div className="flex flex-col gap-4 w-full">
                 {/* Disorganized Documents - Left, expands right */}
-                <div
-                  onClick={() => setHeroExpanded(prev => {
-                    if (!Array.isArray(prev)) return [0];
-                    return prev.includes(0) ? prev.filter(i => i !== 0) : [...prev, 0];
-                  })}
-                  className={`group relative w-24 h-24 rounded-2xl cursor-pointer transition-all duration-300 origin-left self-start ${
-                    'bg-[#14b8a6]'
-                  } ${Array.isArray(heroExpanded) && heroExpanded.includes(0) ? 'w-80' : ''} text-white border-8 border-white/20 shadow-[4px_0_12px_rgba(255,255,255,0.3)] overflow-hidden`}
-                >
-                  <div className="flex flex-col items-center justify-center h-full p-2">
-                    <h3 className="text-xs font-normal text-center mb-1">Disorganized Documents?</h3>
-                    <Lock className="w-8 h-8 scale-[110%] mx-auto" />
+                <div className="relative flex items-center self-start">
+                  <div
+                    onClick={() => setHeroExpanded(prev => {
+                      if (!Array.isArray(prev)) return [0];
+                      return prev.includes(0) ? prev.filter(i => i !== 0) : [...prev, 0];
+                    })}
+                    className={`group relative w-24 h-24 rounded-l-2xl cursor-pointer transition-all duration-300 origin-left ${
+                      'bg-[#14b8a6]'
+                    } ${Array.isArray(heroExpanded) && heroExpanded.includes(0) ? 'w-72' : ''} text-white border-8 border-white/20 shadow-[4px_0_12px_rgba(255,255,255,0.3)] overflow-hidden`}
+                  >
+                    <div className="flex flex-col items-center justify-center h-full p-2">
+                      <h3 className="text-xs font-normal text-center mb-1">Disorganized Documents?</h3>
+                      <Lock className="w-8 h-8 scale-[110%] mx-auto" />
+                    </div>
+                    <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
+                      Array.isArray(heroExpanded) && heroExpanded.includes(0) ? 'opacity-100' : 'opacity-0'
+                    }`}>
+                      <p className="text-xs text-gray-800 text-center">No more scattered documents, Vytara has all your medical documents securely stored in one place</p>
+                    </div>
                   </div>
-                  <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
-                    Array.isArray(heroExpanded) && heroExpanded.includes(0) ? 'opacity-100' : 'opacity-0'
-                  }`}>
-                    <p className="text-xs text-gray-800 text-center">No more scattered documents, Vytara has all your medical documents securely stored in one place</p>
+                  <div
+                    onClick={() => setHeroExpanded(prev => {
+                      if (!Array.isArray(prev)) return [0];
+                      return prev.includes(0) ? prev.filter(i => i !== 0) : [...prev, 0];
+                    })}
+                    className="w-6 h-24 bg-[#5eead4] rounded-r-2xl flex items-center justify-center cursor-pointer"
+                  >
+                    <span className="text-white font-bold text-lg">{heroExpanded.includes(0) ? '<' : '>'}</span>
                   </div>
                 </div>
 
                 {/* Emergency Services - Right, expands left */}
-                <div
-                  onClick={() => setHeroExpanded(heroExpanded.includes(1) ? heroExpanded.filter(i => i !== 1) : [...heroExpanded, 1])}
-                  className={`group relative w-24 h-24 rounded-2xl cursor-pointer transition-all duration-300 origin-right self-end ${
-                    'bg-[#134E4A]'
-                  } ${heroExpanded.includes(1) ? 'w-80' : ''} text-white border-8 border-white/20 shadow-[4px_0_12px_rgba(255,255,255,0.3)] overflow-hidden`}
-                >
-                  <div className="flex flex-col items-center justify-center h-full p-2">
-                    <h3 className="text-xs font-normal text-center mb-1">Emergency Services?</h3>
-                    <AlertCircle className="w-8 h-8 scale-[110%] mx-auto" />
+                <div className="relative flex items-center self-end">
+                  <div
+                    onClick={() => setHeroExpanded(heroExpanded.includes(1) ? heroExpanded.filter(i => i !== 1) : [...heroExpanded, 1])}
+                    className="w-6 h-24 bg-[#207a74] rounded-l-2xl flex items-center justify-center cursor-pointer"
+                  >
+                    <span className="text-white font-bold text-lg">{heroExpanded.includes(1) ? '>' : '<'}</span>
                   </div>
-                  <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
-                    heroExpanded.includes(1) ? 'opacity-100' : 'opacity-0'
-                  }`}>
-                    <p className="text-xs text-gray-800 text-center">Emergency services are one click away from reaching you at your most vulnerable times.</p>
+                  <div
+                    onClick={() => setHeroExpanded(heroExpanded.includes(1) ? heroExpanded.filter(i => i !== 1) : [...heroExpanded, 1])}
+                    className={`group relative w-24 h-24 rounded-r-2xl cursor-pointer transition-all duration-300 origin-right ${
+                      'bg-[#134E4A]'
+                    } ${heroExpanded.includes(1) ? 'w-72' : ''} text-white border-8 border-white/20 shadow-[4px_0_12px_rgba(255,255,255,0.3)] overflow-hidden`}
+                  >
+                    <div className="flex flex-col items-center justify-center h-full p-2">
+                      <h3 className="text-xs font-normal text-center mb-1">Emergency Services?</h3>
+                      <AlertCircle className="w-8 h-8 scale-[110%] mx-auto" />
+                    </div>
+                    <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
+                      heroExpanded.includes(1) ? 'opacity-100' : 'opacity-0'
+                    }`}>
+                      <p className="text-xs text-gray-800 text-center">Emergency services are one click away from reaching you at your most vulnerable times.</p>
+                    </div>
                   </div>
                 </div>
 
                 {/* Unmonitored Wellness - Left, expands right */}
-                <div
-                  onClick={() => setHeroExpanded(prev => {
-                    if (!Array.isArray(prev)) return [2];
-                    return prev.includes(2) ? prev.filter(i => i !== 2) : [...prev, 2];
-                  })}
-                  className={`group relative w-24 h-24 rounded-2xl cursor-pointer transition-all duration-300 origin-left self-start ${
-                    'bg-[#14b8a6]'
-                  } ${Array.isArray(heroExpanded) && heroExpanded.includes(2) ? 'w-80' : ''} text-white border-8 border-white/20 shadow-[4px_0_12px_rgba(255,255,255,0.3)] overflow-hidden`}
-                >
-                 <div className="flex flex-col items-center justify-center h-full p-2">
-                    <h3 className="text-xs font-normal text-center mb-1">Unmonitored Wellness?</h3>
-                    <Users className="w-8 h-8 scale-[110%] mx-auto" />
+                <div className="relative flex items-center self-start">
+                  <div
+                    onClick={() => setHeroExpanded(prev => {
+                      if (!Array.isArray(prev)) return [2];
+                      return prev.includes(2) ? prev.filter(i => i !== 2) : [...prev, 2];
+                    })}
+                    className={`group relative w-24 h-24 rounded-l-2xl cursor-pointer transition-all duration-300 origin-left ${
+                      'bg-[#14b8a6]'
+                    } ${Array.isArray(heroExpanded) && heroExpanded.includes(2) ? 'w-72' : ''} text-white border-8 border-white/20 shadow-[4px_0_12px_rgba(255,255,255,0.3)] overflow-hidden`}
+                  >
+                    <div className="flex flex-col items-center justify-center h-full p-2">
+                      <h3 className="text-xs font-normal text-center mb-1">Unmonitored Wellness?</h3>
+                      <Users className="w-8 h-8 scale-[110%] mx-auto" />
+                    </div>
+                    <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
+                      Array.isArray(heroExpanded) && heroExpanded.includes(2) ? 'opacity-100' : 'opacity-0'
+                    }`}>
+                      <p className="text-xs text-gray-800 text-center">Freely monitor the wellness of your loved ones with Vytara</p>
+                    </div>
                   </div>
-                  <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
-                    Array.isArray(heroExpanded) && heroExpanded.includes(2) ? 'opacity-100' : 'opacity-0'
-                  }`}>
-                    <p className="text-xs text-gray-800 text-center">Freely monitor the wellness of your loved ones with Vytara</p>
+                  <div
+                    onClick={() => setHeroExpanded(prev => {
+                      if (!Array.isArray(prev)) return [2];
+                      return prev.includes(2) ? prev.filter(i => i !== 2) : [...prev, 2];
+                    })}
+                    className="w-6 h-24 bg-[#5eead4] rounded-r-2xl flex items-center justify-center cursor-pointer"
+                  >
+                    <span className="text-white font-bold text-lg">{heroExpanded.includes(2) ? '<' : '>'}</span>
                   </div>
                 </div>
               </div>
@@ -631,6 +661,16 @@ export default function Landing() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* GET STARTED */}
+        <section className="px-4 py-20 text-center">
+          <button
+            onClick={() => nav('login')}
+            className="bg-gradient-to-r from-[#14b8a6] to-[#134E4A] text-white px-8 py-4 rounded-full font-semibold text-lg hover:from-[#134E4A] hover:to-[#14b8a6] transition"
+          >
+            Get Started
+          </button>
         </section>
 
         {/* GET STARTED */}
