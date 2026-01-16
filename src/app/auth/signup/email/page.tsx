@@ -37,7 +37,6 @@ export default function SignupWithEmail() {
     }
 
     setLoading(true);
-
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
@@ -47,18 +46,20 @@ export default function SignupWithEmail() {
         body: JSON.stringify({ email: normalizedEmail }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error("check_failed");
+        throw new Error(data?.error || "check_failed");
       }
 
-      const { exists } = (await res.json()) as { exists?: boolean };
-      if (exists) {
-        setErrorMsg("User Already Exists");
+      if (data.exists) {
+        setErrorMsg("User Already Exists. Please Log in.");
         setLoading(false);
         return;
       }
-    } catch {
-      setErrorMsg("Unable to verify account. Please try again.");
+    } catch (err) {
+      console.error("check-user error:", err);
+      setErrorMsg("Verification service unavailable. Please try again.");
       setLoading(false);
       return;
     }
@@ -78,14 +79,14 @@ export default function SignupWithEmail() {
     setLoading(false);
 
     if (error) {
-      setErrorMsg(error.message || "Failed to send verification link. Please try again.");
+      setErrorMsg(error.message || "Failed to send verification link.");
       return;
     }
 
     setSuccessMsg("Verification link sent! Please check your email to continue.");
   };
 
-  return (
+   return (
     <main className="min-h-screen w-full flex items-center justify-center relative bg-slate-950 overflow-hidden py-12">
       <Plasma />
 
@@ -130,7 +131,7 @@ export default function SignupWithEmail() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-br from-[#14b8a6] to-[#0f766e] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-teal-900/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-70 disabled:hover:scale-100"
+                className="w-full bg-gradient-to-br from-[#14b8a6] to-[#0f766e] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-teal-900/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-70"
               >
                 {loading ? "Sending Link..." : "Send Verification Link"}
               </button>
@@ -140,7 +141,9 @@ export default function SignupWithEmail() {
               )}
 
               {successMsg && (
-                <p className="text-sm text-emerald-700 text-center">{successMsg}</p>
+                <p className="text-sm text-emerald-700 text-center">
+                  {successMsg}
+                </p>
               )}
             </form>
 
