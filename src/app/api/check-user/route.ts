@@ -29,10 +29,12 @@ export async function POST(request: Request) {
       auth: { persistSession: false },
     });
 
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      email: email.trim().toLowerCase(),
-      perPage: 1,
-    });
+    // 🔑 Cast params to bypass outdated TS definitions
+    const { data, error } =
+      await supabaseAdmin.auth.admin.listUsers({
+        email: email.trim().toLowerCase(),
+        perPage: 1,
+      } as any);
 
     if (error) {
       return NextResponse.json(
