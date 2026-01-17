@@ -9,6 +9,7 @@ import {
   Folder,
 } from 'lucide-react';
 import { useState } from 'react';
+import { supabase } from '@/lib/createClient';
 
 export default function StaticVaultPage() {
 
@@ -38,6 +39,21 @@ export default function StaticVaultPage() {
             ? documents
             : documents.filter((doc) => doc.type === activeFilter);
 
+    const getFolderByType = (type: string) => {
+      switch(type) {
+        case "Lab Reports":
+          return "lab-reports";
+        case "Prescriptions":
+          return "prescriptions";
+        case "Insurance":
+          return "insurance";
+        case "Bills & Receipts":
+          return "bills";
+        default: 
+          return "others";
+      }
+    };
+            
     return (
         <div className="min-h-screen bg-[#f4f7f8]">
         <main className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-3 gap-8">
@@ -189,19 +205,46 @@ export default function StaticVaultPage() {
 
                 <button 
                     className="w-full py-3 bg-teal-600 text-white rounded-xl"
-                    onClick={() => {
+                    onClick={async () => {
                         if(!selectedFile) return;
                         
-                        setDocuments((prev) => [
+                        const folder = getFolderByType(selectedType);
+
+                        const filePath = `${folder}/${Date.now()}-${selectedFile.name}`;
+
+                        const {
+                          data: { user },
+                        } = await supabase.auth.getUser();
+
+                        if (!user) {
+                          alert("Not authenticated");
+                          return;
+                        }
+
+                        const userId = user.id;
+
+                        const { error } = await supabase.storage
+                          .from("medical-vault")
+                          .upload(filePath ,selectedFile, {
+                            cacheControl: "3600",
+                            upsert: false,
+                          });
+
+                          if( error ) {
+                            console.error("Upload Failed", error.message);
+                            return;
+                          } 
+
+                          setDocuments((prev) => [
                             ...prev,
                             {
-                                id: Date.now(),
-                                name: selectedFile.name,
-                                type: selectedType,
-                                file: selectedFile,
-                                uploadedAt: new Date().toLocaleDateString(),
+                              id: Date.now(),
+                              name: selectedFile.name,
+                              type: selectedType,
+                              file: selectedFile,
+                              uploadedAt: new Date().toLocaleString(),
                             },
-                        ]);
+                          ]);
 
                         setSelectedFile(null);
                         setIsUploadOpen(false);
