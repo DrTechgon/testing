@@ -85,7 +85,7 @@ export default function SetPasswordClient() {
     }
 
     setLoading(false);
-    router.push("/app/homepage");
+    router.push("/app/health-onboarding");
   };
 
   return (

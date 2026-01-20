@@ -116,7 +116,7 @@ export default function SignupWithPhone() {
       // Non-blocking
     }
 
-    router.push("/app/homepage");
+    router.push("/app/health-onboarding");
   };
 
   return (
