@@ -70,7 +70,7 @@ const CookiePolicyLayout = () => {
   };
   const [activeSection, setActiveSection] = useState('intro');
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const sections = [
     { id: 'intro', title: 'Introductory Text' },
@@ -406,3 +406,4 @@ Further information about cookies, including how to see what cookies have been s
 };
 
 export default CookiePolicyLayout;
+
