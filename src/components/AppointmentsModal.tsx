@@ -17,6 +17,12 @@ type Props = {
   onDeleteAppointment: (id: string) => void;
 };
 
+type TimeParts = {
+  hour: string;
+  minute: string;
+  period: string;
+};
+
 // Dynamic fields configuration for each appointment type
 const appointmentTypeFields = {
   'Doctor Visit': [
@@ -51,6 +57,51 @@ const appointmentTypeFields = {
   ],
 };
 
+const to24HourTime = (hour: string, minute: string, period: string) => {
+  if (!hour || !minute || !period) return '';
+  const parsedHour = Number(hour);
+  const parsedMinute = Number(minute);
+  if (!Number.isFinite(parsedHour)) return '';
+  if (!Number.isFinite(parsedMinute)) return '';
+
+  let hour24 = parsedHour;
+  if (period === 'AM') {
+    hour24 = parsedHour === 12 ? 0 : parsedHour;
+  } else if (period === 'PM') {
+    hour24 = parsedHour === 12 ? 12 : parsedHour + 12;
+  } else {
+    return '';
+  }
+
+  return `${String(hour24).padStart(2, '0')}:${String(parsedMinute).padStart(2, '0')}`;
+};
+
+const from24HourTime = (time: string): TimeParts => {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!match) return { hour: '', minute: '', period: '' };
+
+  const hour24 = Number(match[1]);
+  const minute = match[2];
+  if (!Number.isFinite(hour24)) return { hour: '', minute: '', period: '' };
+
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+
+  return {
+    hour: String(hour12).padStart(2, '0'),
+    minute,
+    period,
+  };
+};
+
+const clampTimePart = (value: string, max: number) => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  const numeric = Number(digits);
+  if (!Number.isFinite(numeric)) return '';
+  return String(Math.min(numeric, max));
+};
+
 export function AppointmentsModal({ appointments, onClose, onAddAppointment, onDeleteAppointment }: Props) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isClient, setIsClient] = useState(false);
@@ -62,6 +113,11 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
     date: '',
     time: '',
     type: '',
+  });
+  const [eventTime, setEventTime] = useState<TimeParts>({
+    hour: '',
+    minute: '',
+    period: '',
   });
   const [additionalFields, setAdditionalFields] = useState<{ [key: string]: string }>({});
 
@@ -91,6 +147,17 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
     setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1));
   };
 
+  const updateTime = (next: Partial<TimeParts>) => {
+    setEventTime((prev) => {
+      const updated = { ...prev, ...next };
+      setEventForm((form) => ({
+        ...form,
+        time: to24HourTime(updated.hour, updated.minute, updated.period),
+      }));
+      return updated;
+    });
+  };
+
   const handleDateClick = (day: number) => {
     const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     setEventForm({
@@ -99,6 +166,7 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
       time: '',
       type: '',
     });
+    setEventTime({ hour: '', minute: '', period: '' });
     setAdditionalFields({});
     setSelectedEvent(null);
     setShowEventModal(true);
@@ -113,6 +181,7 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
       time: appointment.time,
       type: appointment.type,
     });
+    setEventTime(from24HourTime(appointment.time));
 
     // Populate additional fields
     const fields: { [key: string]: string } = {};
@@ -126,6 +195,26 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
 
   const handleSaveEvent = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!eventForm.title.trim()) {
+      alert('Please enter the event name.');
+      return;
+    }
+    if (!eventTime.hour) {
+      alert('Please enter the hour for the appointment time.');
+      return;
+    }
+    if (!eventTime.minute) {
+      alert('Please enter the minutes for the appointment time.');
+      return;
+    }
+    if (!eventTime.period) {
+      alert('Please select AM or PM for the appointment time.');
+      return;
+    }
+    if (!eventForm.type) {
+      alert('Please select an appointment type.');
+      return;
+    }
     if (eventForm.title && eventForm.date && eventForm.time && eventForm.type) {
       const appointmentDateTime = new Date(`${eventForm.date}T${eventForm.time}`);
       const now = new Date();
@@ -143,6 +232,7 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
       onAddAppointment(appointmentData);
       setShowEventModal(false);
       setEventForm({ title: '', date: '', time: '', type: '' });
+      setEventTime({ hour: '', minute: '', period: '' });
       setAdditionalFields({});
       setSelectedEvent(null);
     }
@@ -158,6 +248,7 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
       setShowEventModal(false);
       setSelectedEvent(null);
       setEventForm({ title: '', date: '', time: '', type: '' });
+      setEventTime({ hour: '', minute: '', period: '' });
       setAdditionalFields({});
       setShowDeleteConfirmation(false);
     }
@@ -261,23 +352,28 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
       {/* Add/Edit Event Modal */}
       {showEventModal && (
         <div className="fixed inset-0 flex items-center justify-center p-4 z-[60] overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 my-8">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-slate-900">{selectedEvent ? 'Edit Appointment' : 'Add Appointment'}</h3>
-              <button
-                onClick={() => {
-                  setShowEventModal(false);
-                  setSelectedEvent(null);
-                  setEventForm({ title: '', date: '', time: '', type: '' });
-                  setAdditionalFields({});
-                }}
-                className="p-2 hover:bg-slate-100 rounded-lg transition text-slate-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+          <div className="relative overflow-hidden rounded-[28px] max-w-md w-full my-8 border border-white/30 bg-white/20 shadow-[0_18px_60px_-28px_rgba(15,23,42,0.45)] ring-1 ring-white/40 backdrop-blur-2xl backdrop-saturate-150">
+            <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-gradient-to-br from-white/45 via-white/18 to-white/8" />
+            <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.35),rgba(255,255,255,0)_55%)]" />
+            <div className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-white/20" />
+            <div className="relative z-10">
+              <div className="p-6 border-b border-white/40 bg-white/35 backdrop-blur-md flex justify-between items-center">
+                <h3 className="text-xl font-bold text-slate-900">{selectedEvent ? 'Edit Appointment' : 'Add Appointment'}</h3>
+                <button
+                  onClick={() => {
+                    setShowEventModal(false);
+                    setSelectedEvent(null);
+                    setEventForm({ title: '', date: '', time: '', type: '' });
+                    setEventTime({ hour: '', minute: '', period: '' });
+                    setAdditionalFields({});
+                  }}
+                  className="p-2 hover:bg-white/60 rounded-lg transition text-slate-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-            <form onSubmit={handleSaveEvent} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <form onSubmit={handleSaveEvent} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               <div>
                 <label className="block text-slate-700 mb-2 font-semibold text-sm">Event Name</label>
                 <input
@@ -304,13 +400,62 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
 
               <div>
                 <label className="block text-slate-700 mb-2 font-semibold text-sm">Event Time</label>
-                <input
-                  type="time"
-                  value={eventForm.time}
-                  onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                  required
-                />
+                <div className="rounded-xl border border-slate-300 bg-slate-50 p-3">
+                  <div className="grid grid-cols-[1fr_auto_1fr_auto_2.5fr] items-center gap-2">
+                    <input
+                      type="text"
+                      value={eventTime.hour}
+                      onChange={(e) => updateTime({ hour: clampTimePart(e.target.value, 12) })}
+                      placeholder="HH"
+                      inputMode="numeric"
+                      maxLength={2}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold tracking-wide focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                      aria-label="Hour"
+                    />
+                    <span className="text-slate-500 font-semibold">:</span>
+                    <input
+                      type="text"
+                      value={eventTime.minute}
+                      onChange={(e) => updateTime({ minute: clampTimePart(e.target.value, 59) })}
+                      placeholder="MM"
+                      inputMode="numeric"
+                      maxLength={2}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold tracking-wide focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                      aria-label="Minute"
+                    />
+                    <div className="grid grid-rows-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateTime({ period: 'AM' })}
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                          eventTime.period === 'AM'
+                            ? 'border-teal-500 bg-teal-500 text-white shadow'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
+                        }`}
+                        aria-pressed={eventTime.period === 'AM'}
+                      >
+                        AM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateTime({ period: 'PM' })}
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                          eventTime.period === 'PM'
+                            ? 'border-teal-500 bg-teal-500 text-white shadow'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
+                        }`}
+                        aria-pressed={eventTime.period === 'PM'}
+                      >
+                        PM
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {eventTime.hour && eventTime.minute && eventTime.period
+                      ? `Selected: ${eventTime.hour.padStart(2, '0')}:${eventTime.minute.padStart(2, '0')} ${eventTime.period}`
+                      : 'Select a time for the appointment'}
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -381,7 +526,8 @@ export function AppointmentsModal({ appointments, onClose, onAddAppointment, onD
                   </button>
                 )}
               </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

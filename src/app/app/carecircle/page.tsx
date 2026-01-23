@@ -100,6 +100,10 @@ export default function CareCirclePage() {
   const [isSavingInvite, setIsSavingInvite] = useState(false);
   const [isEmergencyOpen, setIsEmergencyOpen] = useState(false);
   const [isEmergencyEditing, setIsEmergencyEditing] = useState(false);
+  const [emergencyCardOwner, setEmergencyCardOwner] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [emergencyCard, setEmergencyCard] =
     useState<EmergencyCardData>(emptyEmergencyCard);
   const [emergencyError, setEmergencyError] = useState<string | null>(null);
@@ -177,15 +181,32 @@ export default function CareCirclePage() {
       return;
     }
     const user = data.user;
-    const displayName =
+    let displayName =
       user.user_metadata?.full_name ??
       user.user_metadata?.name ??
-      user.email?.split('@')[0] ??
+      user.phone ??
       'Your';
+
+    const { data: personal } = await supabase
+      .from('personal')
+      .select('display_name')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (personal?.display_name) {
+      displayName = personal.display_name;
+    }
+
     const circleName = `${displayName}'s Care Circle`;
 
     setCurrentUserId(user.id);
     await loadEmergencyCard(user.id);
+    setEmergencyCardOwner((prev) => {
+      if (!prev || prev.id === user.id) {
+        return { id: user.id, name: displayName };
+      }
+      return prev;
+    });
 
     const response = await fetch('/api/care-circle/links', {
       cache: 'no-store',
@@ -374,6 +395,31 @@ export default function CareCirclePage() {
     await loadEmergencyCard(currentUserId);
   };
 
+  const handleViewOwnEmergencyCard = async () => {
+    if (!currentUserId) {
+      return;
+    }
+    const ownerName = circleData.ownerName || 'Your';
+    const isViewingOwn = emergencyCardOwner?.id === currentUserId;
+
+    if (isEmergencyOpen && isViewingOwn) {
+      setIsEmergencyOpen(false);
+      return;
+    }
+
+    setIsEmergencyOpen(true);
+    setIsEmergencyEditing(false);
+    setEmergencyCardOwner({ id: currentUserId, name: ownerName });
+    await loadEmergencyCard(currentUserId);
+  };
+
+  const handleViewMemberEmergencyCard = async (member: CareCircleMember) => {
+    setIsEmergencyOpen(true);
+    setIsEmergencyEditing(false);
+    setEmergencyCardOwner({ id: member.id, name: member.name });
+    await loadEmergencyCard(member.id);
+  };
+
   const photoIdLabel = useMemo(() => {
     if (emergencyCard.photo_id_on_file && emergencyCard.photo_id_last4) {
       return `On file •••• ${emergencyCard.photo_id_last4}`;
@@ -393,6 +439,21 @@ export default function CareCirclePage() {
     }
     return `•••• ${emergencyCard.insurance_last4}`;
   }, [emergencyCard.insurance_last4]);
+
+  const isViewingExternalCard =
+    emergencyCardOwner?.id &&
+    currentUserId &&
+    emergencyCardOwner.id !== currentUserId;
+
+  const emergencyCardOwnerLabel = useMemo(() => {
+    if (!emergencyCardOwner?.name) {
+      return null;
+    }
+    if (emergencyCardOwner.id === currentUserId) {
+      return 'your';
+    }
+    return `${emergencyCardOwner.name}'s`;
+  }, [currentUserId, emergencyCardOwner]);
 
   const activeMembers = useMemo(
     () =>
@@ -431,7 +492,7 @@ export default function CareCirclePage() {
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => setIsEmergencyOpen((prev) => !prev)}
+                onClick={handleViewOwnEmergencyCard}
                 className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-teal-200 bg-white text-teal-700 font-semibold shadow-sm hover:bg-teal-50 transition"
               >
                 Emergency card
@@ -458,6 +519,11 @@ export default function CareCirclePage() {
                 <p className="text-sm text-slate-500">
                   Keep a ready-to-share snapshot for hospital admissions.
                 </p>
+                {emergencyCardOwnerLabel && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Viewing {emergencyCardOwnerLabel} emergency card.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -471,17 +537,19 @@ export default function CareCirclePage() {
                 >
                   Card preview
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEmergencyEditing(true)}
-                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold ${
-                    isEmergencyEditing
-                      ? 'bg-teal-600 text-white'
-                      : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  Edit card
-                </button>
+                {!isViewingExternalCard && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEmergencyEditing(true)}
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold ${
+                      isEmergencyEditing
+                        ? 'bg-teal-600 text-white'
+                        : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Edit card
+                  </button>
+                )}
               </div>
             </div>
 
@@ -489,7 +557,7 @@ export default function CareCirclePage() {
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-sm text-slate-500">
                 Loading emergency card details…
               </div>
-            ) : isEmergencyEditing ? (
+            ) : isEmergencyEditing && !isViewingExternalCard ? (
               <form
                 onSubmit={handleEmergencySave}
                 className="space-y-6 rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-6"
@@ -956,11 +1024,18 @@ export default function CareCirclePage() {
                 activeCirclesImIn.map((member) => (
                   <div
                     key={member.id}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-4"
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 md:flex-row md:items-center md:justify-between"
                   >
                     <p className="text-base font-semibold text-slate-900">
                       {member.name}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => handleViewMemberEmergencyCard(member)}
+                      className="inline-flex items-center justify-center rounded-full border border-teal-200 bg-white px-3 py-1.5 text-sm font-semibold text-teal-700 hover:bg-teal-50"
+                    >
+                      View emergency card
+                    </button>
                   </div>
                 ))
               )}
@@ -986,15 +1061,15 @@ export default function CareCirclePage() {
               </button>
             </div>
             <p className="mt-2 text-sm text-slate-500">
-              Add a registered user by entering their phone number or email.
+              Add a registered user by entering their phone number.
             </p>
             <form onSubmit={handleInviteSubmit} className="mt-4 space-y-4">
               <label className="block text-sm font-medium text-slate-700">
-                Phone number or email
+                Phone number
                 <input
                   value={inviteContact}
                   onChange={(event) => setInviteContact(event.target.value)}
-                  placeholder="name@email.com or +1 555 000 0000"
+                  placeholder="+91 98765 43210"
                   className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </label>

@@ -78,3 +78,9 @@ body {
 .animate-sos-pulse {
   animation: sosPulse 1.8s ease-in-out infinite;
 }
+
+
+.wg-default .wgcurrent a,
+.wg-default .wglist a {
+  text-decoration: none;
+}

@@ -10,6 +10,8 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const isOnboarding = pathname === '/app/health-onboarding';
+  const effectiveCollapsed = isOnboarding ? false : collapsed;
   const navItems = [
     { label: 'Home', href: '/app/homepage', icon: Home },
     { label: 'Profile', href: '/app/profilepage', icon: User },
@@ -29,8 +31,8 @@ export default function Navbar() {
   return (
     <aside
       className={`sticky top-0 h-screen shrink-0 border-r border-teal-900/20 bg-gradient-to-b from-teal-950 via-slate-950 to-slate-950 text-white transition-[width] duration-200 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
+        effectiveCollapsed ? 'w-20' : 'w-64'
+      } ${isOnboarding ? 'pointer-events-none opacity-70' : ''}`}
     >
       <div className="flex h-full flex-col px-3 py-6">
         <div className="flex items-center justify-between px-1">
@@ -41,7 +43,7 @@ export default function Navbar() {
             <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-md p-2">
               <div className="w-full h-full bg-teal-600 rounded-full"></div>
             </div>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <div>
                 <p className="text-sm uppercase tracking-[0.25em] text-teal-200/70">
                   Vytara
@@ -52,10 +54,10 @@ export default function Navbar() {
           </button>
           <button
             onClick={() => setCollapsed((v) => !v)}
-            title={collapsed ? 'Open navbar' : 'Close navbar'}
+            title={effectiveCollapsed ? 'Open navbar' : 'Close navbar'}
             className="ml-auto rounded-lg p-2 text-teal-100/70 hover:bg-white/10 hover:text-white transition"
           >
-            {collapsed ? (
+            {effectiveCollapsed ? (
               <ChevronRight className="w-4 h-4" />
             ) : (
               <ChevronLeft className="w-4 h-4" />
@@ -76,25 +78,31 @@ export default function Navbar() {
                     ? 'bg-teal-500/20 text-white shadow-sm'
                     : 'text-teal-100/80 hover:bg-white/10 hover:text-white'
                 }`}
-                title={collapsed ? item.label : undefined}
+                title={effectiveCollapsed ? item.label : undefined}
               >
                 <Icon className="w-4 h-4" />
-                {!collapsed && item.label}
+                {!effectiveCollapsed && item.label}
               </button>
             );
           })}
         </nav>
+
+        {isOnboarding && !effectiveCollapsed && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-xs text-teal-100/80">
+            Complete onboarding to unlock navigation.
+          </div>
+        )}
 
         <button
           onClick={async () => {
             await supabase.auth.signOut();
             router.push('/auth/login');
           }}
-          title={collapsed ? 'Logout' : undefined}
+          title={effectiveCollapsed ? 'Logout' : undefined}
           className="mt-auto flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-200/90 hover:bg-white/10 hover:text-red-100 transition"
         >
           <LogOut className="w-4 h-4" />
-          {!collapsed && 'Logout'}
+          {!effectiveCollapsed && 'Logout'}
         </button>
       </div>
     </aside>

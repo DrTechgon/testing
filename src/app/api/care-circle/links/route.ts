@@ -3,12 +3,13 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 
-const getDisplayName = (email: string | null) => {
-  const trimmed = email?.trim() ?? '';
+const getDisplayName = (displayName: string | null, phone: string | null) => {
+  const trimmed = displayName?.trim() ?? '';
   if (trimmed) {
     return trimmed;
   }
-  return 'Unknown member';
+  const phoneValue = phone?.trim() ?? '';
+  return phoneValue || 'Unknown member';
 };
 
 export async function GET() {
@@ -72,14 +73,17 @@ export async function GET() {
     )
   );
 
-  const credentialsLookup: Record<string, string | null> = {};
+  const personalLookup: Record<string, { displayName: string | null; phone: string | null }> = {};
   if (memberIds.length > 0) {
-    const { data: credentials } = await adminClient
-      .from('credentials')
-      .select('id, email')
+    const { data: people } = await adminClient
+      .from('personal')
+      .select('id, display_name, phone')
       .in('id', memberIds);
-    (credentials ?? []).forEach((credential) => {
-      credentialsLookup[credential.id] = credential.email ?? null;
+    (people ?? []).forEach((person) => {
+      personalLookup[person.id] = {
+        displayName: person.display_name ?? null,
+        phone: person.phone ?? null,
+      };
     });
   }
 
@@ -89,7 +93,10 @@ export async function GET() {
       id: link.id,
       memberId: link.recipient_id,
       status: link.status,
-      displayName: getDisplayName(credentialsLookup[link.recipient_id] ?? null),
+      displayName: getDisplayName(
+        personalLookup[link.recipient_id]?.displayName ?? null,
+        personalLookup[link.recipient_id]?.phone ?? null
+      ),
       createdAt: link.created_at,
     }));
 
@@ -99,7 +106,10 @@ export async function GET() {
       id: link.id,
       memberId: link.requester_id,
       status: link.status,
-      displayName: getDisplayName(credentialsLookup[link.requester_id] ?? null),
+      displayName: getDisplayName(
+        personalLookup[link.requester_id]?.displayName ?? null,
+        personalLookup[link.requester_id]?.phone ?? null
+      ),
       createdAt: link.created_at,
     }));
 

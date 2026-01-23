@@ -1,31 +1,120 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabase } from "@/lib/createClient";
 import Plasma from "@/components/Plasma";
 
-/* ========================= SIGNUP PAGE (CHOICE) ========================= */
+/* ========================= SIGNUP WITH PHONE ========================= */
 
 export default function SignupPage() {
   const router = useRouter();
 
-  const signUpWithGoogle = async () => {
-    const redirectTo = `${window.location.origin}/auth/callback?next=/app/health-onboarding`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
+  const [phone, setPhone] = useState("");
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(""));
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [timer, setTimer] = useState(0);
+  const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  const fullPhone = `+91${phone}`;
+
+  useEffect(() => {
+    if (timer <= 0) return;
+    const id = setInterval(() => setTimer((t) => t - 1), 1000);
+    return () => clearInterval(id);
+  }, [timer]);
+
+  /* ========================= SEND OTP ========================= */
+  const sendOtp = async () => {
+    setErrorMsg("");
+
+    if (phone.length !== 10) {
+      setErrorMsg("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
+    setLoading(true);
+
+    const { data: existingUser, error: lookupError } = await supabase
+      .from("personal")
+      .select("id")
+      .eq("phone", fullPhone)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.warn("Phone lookup failed; proceeding with OTP.", lookupError);
+    } else if (existingUser) {
+      setLoading(false);
+      setErrorMsg("Account already exists. Please sign in.");
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: fullPhone,
       options: {
-        redirectTo,
-        queryParams: {
-          prompt: "select_account",
-        },
+        shouldCreateUser: true,
       },
     });
 
+    setLoading(false);
+
     if (error) {
-      console.error(error);
-      alert("Google sign-up failed. Please try again.");
+      const lowerMessage = error.message.toLowerCase();
+      if (lowerMessage.includes("already")) {
+        setErrorMsg("Account already exists. Please sign in.");
+      } else {
+        setErrorMsg(error.message || "Failed to send OTP. Please try again.");
+      }
+      return;
     }
+
+    setStep("otp");
+    setTimer(60);
+  };
+
+  /* ========================= VERIFY OTP ========================= */
+  const verifyOtp = async () => {
+    setErrorMsg("");
+
+    const otp = otpDigits.join("");
+    if (otp.length !== 6) {
+      setErrorMsg("Please enter the 6-digit OTP.");
+      return;
+    }
+
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: fullPhone,
+      token: otp,
+      type: "sms",
+    });
+
+    setLoading(false);
+
+    if (error || !data?.user) {
+      setErrorMsg(error?.message || "Invalid OTP. Please try again.");
+      return;
+    }
+
+    try {
+      const { error: upsertError } = await supabase
+        .from("personal")
+        .upsert(
+          { id: data.user.id, phone: fullPhone },
+          { onConflict: "id" }
+        );
+      if (upsertError) {
+        console.error("Personal upsert failed:", upsertError);
+      }
+    } catch {
+      // Non-blocking
+    }
+
+    router.push("/app/health-onboarding");
   };
 
   return (
@@ -49,62 +138,137 @@ export default function SignupPage() {
             </div>
 
             <h1 className="text-center text-[#14b8a6] text-3xl font-bold mb-1">
-              Join Vytara
+              Sign up with Phone
             </h1>
+
             <p className="text-center text-gray-500 mb-8 text-sm">
-              Create your health account today
+              {step === "phone"
+                ? "We’ll send you a one-time password"
+                : `Enter the OTP sent to +91 ${phone}`}
             </p>
 
-            <div className="space-y-4">
-              <button
-                onClick={() => router.push("/auth/signup/phone")}
-                className="w-full bg-gradient-to-br from-[#14b8a6] to-[#0f766e] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-teal-900/20 hover:scale-[1.02] active:scale-95 transition-all"
-              >
-                Sign up with Phone Number
-              </button>
+            {step === "phone" && (
+              <>
+                <div className="flex mb-4">
+                  <div className="flex items-center px-4 bg-gray-100 border-2 border-r-0 border-gray-100 rounded-l-xl text-gray-600 font-semibold">
+                    +91
+                  </div>
 
-              <button
-                onClick={() => router.push("/auth/signup/email")}
-                className="w-full bg-gradient-to-br from-[#14b8a6] to-[#0f766e] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-teal-900/20 hover:scale-[1.02] active:scale-95 transition-all"
-              >
-                Sign up with Email
-              </button>
-            </div>
+                  <input
+                    type="tel"
+                    placeholder="Phone number"
+                    value={phone}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, "");
+                      if (digitsOnly.length <= 10) setPhone(digitsOnly);
+                    }}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-r-xl focus:border-[#14b8a6] focus:bg-white focus:outline-none transition-all text-black"
+                  />
+                </div>
 
-            <div className="my-6 flex items-center">
-              <div className="flex-grow border-t border-gray-200" />
-              <span className="mx-4 text-xs text-gray-400 uppercase tracking-wide">
-                Or
-              </span>
-              <div className="flex-grow border-t border-gray-200" />
-            </div>
-
-            <button
-              onClick={signUpWithGoogle}
-              className="flex items-center justify-center gap-3 w-full border border-gray-300 rounded-xl py-3 bg-white hover:bg-gray-50 transition-all shadow-sm cursor-pointer"
-            >
-              <img
-                src="https://www.svgrepo.com/show/475656/google-color.svg"
-                alt="Google"
-                className="w-5 h-5"
-              />
-              <span className="text-sm font-medium text-gray-700">
-                Sign up with Google
-              </span>
-            </button>
-
-            <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-              <p className="text-sm text-gray-500">
-                Already have an account?{" "}
                 <button
-                  className="text-[#14b8a6] font-bold hover:underline"
-                  onClick={() => router.push("/auth/login")}
+                  onClick={sendOtp}
+                  disabled={loading}
+                  className="w-full bg-gradient-to-br from-[#14b8a6] to-[#0f766e] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-teal-900/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-70"
                 >
-                  Sign In
+                  {loading ? "Sending OTP..." : "Request OTP"}
                 </button>
-              </p>
-            </div>
 
+                <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+                  <p className="text-sm text-gray-500">
+                    Already have an account?{" "}
+                    <button
+                      className="text-[#14b8a6] font-bold hover:underline"
+                      onClick={() => router.push("/auth/login")}
+                    >
+                      Sign In
+                    </button>
+                  </p>
+                </div>
+              </>
+            )}
+
+            {step === "otp" && (
+              <>
+                <div
+                  className="flex items-center justify-between gap-2 mb-4"
+                  onPaste={(e) => {
+                    const text = e.clipboardData
+                      .getData("text")
+                      .replace(/\D/g, "")
+                      .slice(0, 6);
+                    if (!text) return;
+                    e.preventDefault();
+                    const next = Array(6).fill("");
+                    text.split("").forEach((char, idx) => {
+                      next[idx] = char;
+                    });
+                    setOtpDigits(next);
+                    otpRefs.current[Math.min(text.length, 6) - 1]?.focus();
+                  }}
+                >
+                  {otpDigits.map((digit, idx) => (
+                    <input
+                      key={idx}
+                      ref={(el) => {
+                        otpRefs.current[idx] = el;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      value={digit}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "").slice(-1);
+                        const next = [...otpDigits];
+                        next[idx] = value;
+                        setOtpDigits(next);
+                        if (value && idx < 5) {
+                          otpRefs.current[idx + 1]?.focus();
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace" && !otpDigits[idx] && idx > 0) {
+                          otpRefs.current[idx - 1]?.focus();
+                        }
+                        if (e.key === "ArrowLeft" && idx > 0) {
+                          otpRefs.current[idx - 1]?.focus();
+                        }
+                        if (e.key === "ArrowRight" && idx < 5) {
+                          otpRefs.current[idx + 1]?.focus();
+                        }
+                      }}
+                      className="w-11 h-12 text-center text-lg font-semibold bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-[#14b8a6] focus:bg-white focus:outline-none transition-all text-black"
+                      aria-label={`OTP digit ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={verifyOtp}
+                  disabled={loading}
+                  className="w-full bg-gradient-to-br from-[#14b8a6] to-[#0f766e] text-white py-3.5 rounded-xl font-bold shadow-lg shadow-teal-900/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-70"
+                >
+                  {loading ? "Verifying..." : "Verify & Continue"}
+                </button>
+
+                {timer > 0 ? (
+                  <p className="mt-3 text-xs text-gray-400 text-center">
+                    Resend available in {timer}s
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={sendOtp}
+                    className="mt-3 text-xs text-[#14b8a6] font-semibold hover:underline block mx-auto"
+                  >
+                    Resend OTP
+                  </button>
+                )}
+              </>
+            )}
+
+            {errorMsg && (
+              <p className="mt-4 text-sm text-red-600 text-center">{errorMsg}</p>
+            )}
           </div>
         </div>
       </div>

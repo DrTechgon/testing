@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  User, Mail, Phone, Activity, Edit2,
+  User, Phone, Activity, Edit2,
   Download, Droplet, Calculator, CalendarCheck,
   ChevronDown, Users, Menu, X, Pill, History, LogOut, Calendar, Locate, Plus
 } from 'lucide-react';
@@ -23,7 +23,6 @@ export default function ProfilePageUI() {
       const { data } = await supabase.auth.getUser();
       if(data.user){
         setUserId(data.user.id)
-        setEmail(data.user.email ?? "")
         setPhoneNumber(data.user.phone ?? "")
       }
     }
@@ -33,7 +32,6 @@ export default function ProfilePageUI() {
   {/* PERSONAL DATA */}
   const [userName, setUserName] = useState("");
   const [gender, setGender] = useState("");
-  const [email, setEmail] = useState("");
   const [dob, setDob] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [bloodGroup, setBloodGroup] = useState("");
@@ -98,43 +96,12 @@ export default function ProfilePageUI() {
     return `${label} ${year}`;
   };
 
-  useEffect(() => {
-    async function fetchProfileData() {
-      if (userId) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('personal')
-          .eq('user_id', userId)
-          .single();
-        
-        if ( data && data.personal ) {
-          const profile = data.personal;
-          setUserName(profile.fullName || "");
-          setGender(profile.gender || "");
-          //setDob(profile.dob || "");
-          setPhoneNumber((prev) => profile.contactNumber || prev || "");
-          //setBloodGroup(profile.bloodGroup || "");
-          setAddress(profile.address || "");
-        }
-
-        if ( error ){
-          console.log("Error: ", error);
-        }
-      }
-    }
-    fetchProfileData();
-  }, [userId]);
-
-
 useEffect(() => {
-    async function fetchCredentialsData(){
+    async function fetchPersonalData(){
       if (!userId) return;
       const { data, error } = await supabase
-        .from("credentials")
-        .select(`
-          email,
-          phone
-        `)
+        .from("personal")
+        .select("display_name, phone, gender, address")
         .eq("id", userId)
         .maybeSingle();
 
@@ -144,10 +111,15 @@ useEffect(() => {
       }
 
       if (data){
+        if (data.display_name) {
+          setUserName(data.display_name);
+        }
         setPhoneNumber((prev) => data.phone || prev || "");
+        setGender((prev) => data.gender || prev || "");
+        setAddress((prev) => data.address || prev || "");
       }
     }
-    fetchCredentialsData();
+    fetchPersonalData();
   }, [userId]);
 
 
@@ -201,16 +173,16 @@ useEffect(() => {
   useEffect(() => {
     async function fetchFamilyHealthData() {
       const { data, error } = await supabase
-        .from("profiles")
+        .from("personal")
         .select("family_history")
-        .eq("user_id", userId)
-        .single()
+        .eq("id", userId)
+        .maybeSingle();
 
       if ( error ) { 
         console.log("Error: ", error)
       }
 
-      if ( data && data.family_history){
+      if (data && data.family_history) {
         setFamilyMedicalHistory(data.family_history.familyMedicalHistory || []);
       }
     }
@@ -271,12 +243,6 @@ useEffect(() => {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-teal-600 transition">
-                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-teal-50 flex items-center justify-center">
-                      <Mail className="w-3 h-3" />
-                    </div> 
-                    <span className="break-words whitespace-normal">{email}</span>
-                  </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-teal-600 transition">
                     <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-teal-50 flex items-center justify-center">
                       <Phone className="w-3 h-3" />
@@ -603,19 +569,26 @@ useEffect(() => {
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   const personalData = {
-                    fullName: userName,
-                    dob,
-                    gender,
-                    bloodGroup,
+                    display_name: userName,
                     phone: phoneNumber,
+                    gender,
                     address,
                   };
-                  const { error } = await supabase
-                    .from("profiles")
-                    .update({ personal: personalData })
+                  const { error: personalError } = await supabase
+                    .from("personal")
+                    .update(personalData)
+                    .eq("id", userId);
+                  const { error: healthError } = await supabase
+                    .from("health")
+                    .update({
+                      date_of_birth: dob,
+                      blood_group: bloodGroup,
+                    })
                     .eq("user_id", userId);
-                  if (error) {
-                    alert("Error: " + error.message);
+                  if (personalError) {
+                    alert("Error: " + personalError.message);
+                  } else if (healthError) {
+                    alert("Error: " + healthError.message);
                   } else {
                     setIsPersonalInfoModalOpen(false);
                     alert("Personal information updated successfully!");
@@ -1241,9 +1214,9 @@ useEffect(() => {
                   e.preventDefault();
                   const familyData = { familyMedicalHistory };
                   const { error } = await supabase
-                    .from("profiles")
+                    .from("personal")
                     .update({ family_history: familyData })
-                    .eq("user_id", userId);
+                    .eq("id", userId);
                   if (error) {
                     alert("Error: " + error.message);
                   } else {

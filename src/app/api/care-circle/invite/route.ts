@@ -73,26 +73,10 @@ export async function POST(request: Request) {
   let recipientId: string | null = null;
 
   if (contact.includes('@')) {
-    const emailContact = contact.toLowerCase();
-    let page = 1;
-    const perPage = 1000;
-
-    while (!recipientId) {
-      const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
-      if (error) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
-      }
-
-      recipientId =
-        data.users.find((candidate) => candidate.email?.toLowerCase() === emailContact)
-          ?.id ?? null;
-
-      if (!recipientId && data.nextPage) {
-        page = data.nextPage;
-      } else {
-        break;
-      }
-    }
+    return NextResponse.json(
+      { message: 'Email invites are not supported. Use a phone number instead.' },
+      { status: 400 }
+    );
   }
 
   if (!recipientId) {
@@ -109,19 +93,19 @@ export async function POST(request: Request) {
       variants.add(normalized.replace(/^\+/, ''));
     }
 
-    const { data: credentials, error: credentialsError } = await adminClient
-      .from('credentials')
+    const { data: people, error: personalError } = await adminClient
+      .from('personal')
       .select('id')
       .in('phone', Array.from(variants));
 
-    if (credentialsError) {
+    if (personalError) {
       return NextResponse.json(
-        { message: credentialsError.message },
+        { message: personalError.message },
         { status: 500 }
       );
     }
 
-    recipientId = credentials?.[0]?.id ?? null;
+    recipientId = people?.[0]?.id ?? null;
   }
 
   if (!recipientId) {

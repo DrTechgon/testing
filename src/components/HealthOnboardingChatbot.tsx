@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/createClient";
 
 interface MedicationEntry {
   name: string;
@@ -16,6 +17,7 @@ interface PastSurgeryEntry {
 }
 
 interface Profile {
+  displayName: string;
   dateOfBirth: string; // YYYY-MM-DD
   bloodGroup: string;
   heightCm: number | null;
@@ -50,6 +52,7 @@ interface QuestionConfig {
 }
 
 const QUESTIONS: QuestionConfig[] = [
+  { key: "displayName", question: "What should we call you?", inputType: "text", required: true, placeholder: "e.g., Aisha" },
   { key: "dateOfBirth", question: "What is your date of birth?", inputType: "date", required: true },
   {
     key: "bloodGroup",
@@ -85,6 +88,7 @@ export default function HealthOnboardingChatbot() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<Profile>({
+    displayName: "",
     dateOfBirth: "",
     bloodGroup: "",
     heightCm: null,
@@ -342,15 +346,30 @@ export default function HealthOnboardingChatbot() {
         longTermTreatments: sanitizeTextList(profile.longTermTreatments),
       };
 
+      const { displayName, ...healthPayload } = normalizedProfile;
       const res = await fetch("/api/health-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(normalizedProfile),
+        body: JSON.stringify(healthPayload),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to save");
+      }
+
+      if (displayName.trim()) {
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id;
+        if (userId) {
+          const { error } = await supabase
+            .from("personal")
+            .update({ display_name: displayName.trim() })
+            .eq("id", userId);
+          if (error) {
+            throw new Error(error.message);
+          }
+        }
       }
 
       setIsSaved(true);
@@ -825,7 +844,10 @@ export default function HealthOnboardingChatbot() {
  */
 const styles: Record<string, React.CSSProperties> = {
   pageWrap: {
-    padding: "12x 16px 28px",
+    position: "relative",
+    minHeight: "100vh",
+    padding: "12px 16px 28px",
+    overflow: "hidden",
   },
 
   section: {
@@ -838,18 +860,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   fullBg: {
-  position: "fixed",
-  top: "64px",        // ⬅️ navbar height (adjust if yours is different)
-  left: 0,
-  right: 0,
-  bottom: 0,
-  zIndex: 0,
-  background:
-    "radial-gradient(1200px 600px at 10% 0%, rgba(127, 204, 163, 0.22), transparent 55%)," +
-    "radial-gradient(900px 520px at 95% 12%, rgba(184, 221, 194, 0.18), transparent 58%)," +
-    "radial-gradient(700px 450px at 50% 100%, rgba(154, 201, 150, 0.14), transparent 60%)," +
-    "#070A12",
-},
+    position: "absolute",
+    inset: 0,
+    zIndex: 0,
+    background:
+      "radial-gradient(1200px 600px at 10% 0%, rgba(127, 204, 163, 0.22), transparent 55%)," +
+      "radial-gradient(900px 520px at 95% 12%, rgba(184, 221, 194, 0.18), transparent 58%)," +
+      "radial-gradient(700px 450px at 50% 100%, rgba(154, 201, 150, 0.14), transparent 60%)," +
+      "#070A12",
+  },
 
 
   sectionBg: {
@@ -867,6 +886,7 @@ const styles: Record<string, React.CSSProperties> = {
     pointerEvents: "none",
     position: "absolute",
     inset: 0,
+    zIndex: 1,
     opacity: 0.08,
     mixBlendMode: "overlay",
     backgroundImage:
