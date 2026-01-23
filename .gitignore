@@ -45,3 +45,9 @@ venv/
 .venv/
 __pycache__/
 *.pyc
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
