@@ -646,7 +646,7 @@ export default function Landing() {
                     <Icon className="w-20 h-20 scale-[110%] mx-auto" />
                   </div>
                   <div
-                    className={`absolute left-0 top-0 h-full w-80 bg-blue-200 flex items-center justify-center p-4 transition-all duration-300 ${
+                    className={`absolute inset-0 flex items-center justify-center p-6 text-center transition-all duration-300 bg-black/35 backdrop-blur-sm ${
                       !isMobile
                         ? 'opacity-0 group-hover:opacity-100'
                         : heroExpanded === i
@@ -654,6 +654,9 @@ export default function Landing() {
                         : 'opacity-0'
                     }`}
                   >
+                    <p className="text-sm leading-relaxed text-white font-medium">
+                      {expandedText}
+                    </p>
                   </div>
                 </div>
               ))}

@@ -38,6 +38,14 @@ export default function ProfilePageUI() {
   const [address, setAddress] = useState("");
   const [bmi, setBmi] = useState("");
   const [age, setAge] = useState("");
+  const [personalDraft, setPersonalDraft] = useState({
+    userName: "",
+    gender: "",
+    dob: "",
+    phoneNumber: "",
+    bloodGroup: "",
+    address: "",
+  });
 
   {/* MEDICAL DATA */}
   const [conditions, setConditions] = useState<string[]>([]);
@@ -94,6 +102,22 @@ export default function ProfilePageUI() {
     if (!month || !year) return "Date not set";
     const label = monthOptions.find((opt) => opt.value === month)?.label ?? String(month);
     return `${label} ${year}`;
+  };
+
+  const openPersonalInfoModal = () => {
+    setPersonalDraft({
+      userName,
+      gender,
+      dob,
+      phoneNumber,
+      bloodGroup,
+      address,
+    });
+    setIsPersonalInfoModalOpen(true);
+  };
+
+  const updatePersonalDraft = (patch: Partial<typeof personalDraft>) => {
+    setPersonalDraft((prev) => ({ ...prev, ...patch }));
   };
 
 useEffect(() => {
@@ -209,7 +233,7 @@ useEffect(() => {
             {/* Edit Button */}
             <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
               <button 
-                onClick={() => setIsPersonalInfoModalOpen(true)}
+                onClick={openPersonalInfoModal}
                 className="p-2 bg-white/90 backdrop-blur text-gray-500 hover:text-[#FF8000] hover:bg-orange-50 rounded-full border border-gray-200 shadow-sm transition"
               >  
                 <Edit2 className="w-4 h-4" />
@@ -569,10 +593,10 @@ useEffect(() => {
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   const personalData = {
-                    display_name: userName,
-                    phone: phoneNumber,
-                    gender,
-                    address,
+                    display_name: personalDraft.userName,
+                    phone: personalDraft.phoneNumber,
+                    gender: personalDraft.gender,
+                    address: personalDraft.address,
                   };
                   const { error: personalError } = await supabase
                     .from("personal")
@@ -581,8 +605,8 @@ useEffect(() => {
                   const { error: healthError } = await supabase
                     .from("health")
                     .update({
-                      date_of_birth: dob,
-                      blood_group: bloodGroup,
+                      date_of_birth: personalDraft.dob,
+                      blood_group: personalDraft.bloodGroup,
                     })
                     .eq("user_id", userId);
                   if (personalError) {
@@ -590,6 +614,12 @@ useEffect(() => {
                   } else if (healthError) {
                     alert("Error: " + healthError.message);
                   } else {
+                    setUserName(personalDraft.userName);
+                    setGender(personalDraft.gender);
+                    setDob(personalDraft.dob);
+                    setPhoneNumber(personalDraft.phoneNumber);
+                    setBloodGroup(personalDraft.bloodGroup);
+                    setAddress(personalDraft.address);
                     setIsPersonalInfoModalOpen(false);
                     alert("Personal information updated successfully!");
                   }
@@ -601,8 +631,8 @@ useEffect(() => {
                       <div className="md:col-span-2">
                         <label className="block text-[#309898] mb-2">Full Name *</label>
                         <input
-                          value={userName}
-                          onChange={(e) => setUserName(e.target.value)}
+                          value={personalDraft.userName}
+                          onChange={(e) => updatePersonalDraft({ userName: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
                           placeholder="Full Name"
                         />
@@ -612,8 +642,8 @@ useEffect(() => {
                         <label className="block text-[#309898] mb-2">Date of Birth *</label>
                         <input
                           type="date"
-                          value={dob}
-                          onChange={(e) => setDob(e.target.value)}
+                          value={personalDraft.dob}
+                          onChange={(e) => updatePersonalDraft({ dob: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
                         />
                       </div>
@@ -621,8 +651,8 @@ useEffect(() => {
                       <div>
                         <label className="block text-[#309898] mb-2">Gender *</label>
                         <select
-                          value={gender}
-                          onChange={(e) => setGender(e.target.value)}
+                          value={personalDraft.gender}
+                          onChange={(e) => updatePersonalDraft({ gender: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
                         >
                           <option>Select Gender</option>
@@ -635,8 +665,8 @@ useEffect(() => {
                       <div>
                         <label className="block text-[#309898] mb-2">Blood Group *</label>  
                         <select
-                          value={bloodGroup}
-                          onChange={(e) => setBloodGroup(e.target.value)}
+                          value={personalDraft.bloodGroup}
+                          onChange={(e) => updatePersonalDraft({ bloodGroup: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
                         >
                           <option>Select Blood Group</option>
@@ -654,8 +684,8 @@ useEffect(() => {
                       <div className="md:col-span-2">
                         <label className="block text-[#309898] mb-2">Address *</label>
                         <textarea
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
+                          value={personalDraft.address}
+                          onChange={(e) => updatePersonalDraft({ address: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
                           placeholder="Address"
                         />
@@ -665,8 +695,8 @@ useEffect(() => {
                         <label className="block text-[#309898] mb-2">Contact Number *</label>
                         <input
                           type="tel"
-                          value={phoneNumber}
-                          onChange={(e) => setPhoneNumber(e.target.value)}
+                          value={personalDraft.phoneNumber}
+                          onChange={(e) => updatePersonalDraft({ phoneNumber: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
                           placeholder="eg: 1234567890"
                         />
