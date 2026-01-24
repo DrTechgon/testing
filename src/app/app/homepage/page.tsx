@@ -31,6 +31,12 @@ type Appointment = {
   type: string;
 };
 
+type CareCircleInvite = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
 /* =======================
    PAGE COMPONENT
 ======================= */
@@ -45,6 +51,9 @@ export default function HomePage() {
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
   const [medicalTeam, setMedicalTeam] = useState<Doctor[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [careCircleInvites, setCareCircleInvites] = useState<CareCircleInvite[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
   const [isSendingSOS, setIsSendingSOS] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [greeting, setGreeting] = useState("Good Morning");
@@ -713,6 +722,26 @@ export default function HomePage() {
     }
   };
 
+  const formatInviteTimestamp = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "Just now";
+
+    const now = new Date();
+    const diffMs = now.getTime() - parsed.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+
+    if (diffMinutes < 1) return "Just now";
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
   /* =======================
      UI
   ======================= */
@@ -743,35 +772,14 @@ export default function HomePage() {
               Designed with empathy. Built for clarity. Ready when you need it.
             </p>
 
-            <button
-              onClick={() => setIsSummaryModalOpen(true)}
-              disabled={!userId}
-              className={`mt-8 px-10 py-5 text-lg rounded-2xl font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl ${
-                userId
-                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer'
-                  : 'bg-gray-400 cursor-not-allowed text-gray-200'
-              }`}
-            >
-              Get Summary
-            </button>
-          </div>
-
-          {/* SOS */}
-          <div className="hidden lg:flex justify-center">
-            <button
-              onClick={handleSOS}
-              disabled={isSendingSOS}
-              className={`relative w-48 h-48 rounded-full ${
-                isSendingSOS
-                  ? "bg-red-400 cursor-not-allowed"
-                  : "bg-red-500 hover:bg-red-600"
-              } text-white shadow-2xl flex items-center justify-center transition hover:scale-110 disabled:hover:scale-100 ${
-                isSendingSOS ? "" : "animate-sos-pulse"
-              }`}
-            >
-              <span
-                className={`absolute -inset-6 rounded-full bg-red-500/50 blur-[52px] animate-sos-glow-slow ${
-                  isSendingSOS ? "opacity-0" : "opacity-100"
+            <div className="mt-8 flex flex-wrap items-center gap-4">
+              <button
+                onClick={() => setIsSummaryModalOpen(true)}
+                disabled={!userId}
+                className={`px-10 py-5 text-lg rounded-2xl font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl ${
+                  userId
+                    ? "bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer"
+                    : "bg-gray-400 cursor-not-allowed text-gray-200"
                 }`}
               >
                 Get Summary
@@ -780,22 +788,20 @@ export default function HomePage() {
               <button
                 onClick={handleSOS}
                 disabled={isSendingSOS}
-                className={`relative w-full sm:w-auto px-10 py-5 text-lg rounded-2xl font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl disabled:hover:scale-100 ${
+                className={`px-10 py-5 text-lg rounded-2xl font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl disabled:hover:scale-100 ${
                   isSendingSOS
                     ? "bg-red-400 cursor-not-allowed"
                     : "bg-red-500 hover:bg-red-600"
-                } text-white ${
-                  isSendingSOS ? "" : "animate-sos-pulse"
-                }`}
+                } text-white ${isSendingSOS ? "" : "animate-sos-pulse"}`}
               >
-                <span className="relative z-10 flex items-center gap-3">
+                <span className="flex items-center gap-3">
                   <AlertCircle size={22} />
                   <span>{isSendingSOS ? "Sending..." : "SOS"}</span>
                 </span>
               </button>
             </div>
           </div>
-
+        
           {/* Notifications */}
           <div className="hidden lg:flex justify-end">
             <div className="bg-white rounded-3xl shadow-lg transition border w-full max-w-sm h-[420px] flex flex-col">
