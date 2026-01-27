@@ -447,7 +447,7 @@ useEffect(() => {
   useEffect(() => {
     async function fetchFamilyHealthData() {
       if (!userId) return;
-      const cachedFamilyHistory = readProfileCache<string[]>(userId, 'family_history');
+      const cachedFamilyHistory = readProfileCache<FamilyMedicalHistory[]>(userId, 'family_history');
       if (cachedFamilyHistory) {
         setFamilyMedicalHistory(cachedFamilyHistory);
       }
