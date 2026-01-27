@@ -422,7 +422,7 @@ export default function Landing() {
 
   const nav = (id: string) => {
     setMenu(false);
-    if (id === 'login') return (window.location.href = '/login');
+    if (id === 'login') return (window.location.href = '/auth/login');
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
