@@ -24,6 +24,8 @@ type NotificationsPanelProps = {
 };
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const dismissedInvitesKey = (userId: string) => `vytara:dismissed-invites:${userId}`;
+const dismissedAppointmentsKey = (userId: string) => `vytara:dismissed-appointments:${userId}`;
 
 export function NotificationsPanel({ userId, appointments }: NotificationsPanelProps) {
   const router = useRouter();
@@ -33,6 +35,45 @@ export function NotificationsPanel({ userId, appointments }: NotificationsPanelP
   const [now, setNow] = useState(() => new Date());
   const [dismissedInviteIds, setDismissedInviteIds] = useState<Set<string>>(() => new Set());
   const [dismissedAppointmentIds, setDismissedAppointmentIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+    try {
+      const storedInvites = window.localStorage.getItem(dismissedInvitesKey(userId));
+      const storedAppointments = window.localStorage.getItem(dismissedAppointmentsKey(userId));
+      if (storedInvites) {
+        const parsed = JSON.parse(storedInvites) as string[];
+        setDismissedInviteIds(new Set(parsed));
+      } else {
+        setDismissedInviteIds(new Set());
+      }
+      if (storedAppointments) {
+        const parsed = JSON.parse(storedAppointments) as string[];
+        setDismissedAppointmentIds(new Set(parsed));
+      } else {
+        setDismissedAppointmentIds(new Set());
+      }
+    } catch {
+      setDismissedInviteIds(new Set());
+      setDismissedAppointmentIds(new Set());
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      dismissedInvitesKey(userId),
+      JSON.stringify(Array.from(dismissedInviteIds))
+    );
+  }, [dismissedInviteIds, userId]);
+
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      dismissedAppointmentsKey(userId),
+      JSON.stringify(Array.from(dismissedAppointmentIds))
+    );
+  }, [dismissedAppointmentIds, userId]);
 
   useEffect(() => {
     if (!userId) return;
