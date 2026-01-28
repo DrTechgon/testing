@@ -220,7 +220,7 @@ return (
             <h2 className="text-3xl font-serif mb-6 text-black">Introductory Text</h2>
             <p className="text-gray-700 leading-relaxed mb-4">
               This Privacy Policy describes how Vytara collects, uses, and shares your personal data when you use our
-              website at <a href="https://vytara-official.vercel.app" className="text-blue-600 hover:underline">https://vytara-official.vercel.app</a> ("Site"), you use our Vytara app and platform, you contact us, you sign up to
+              website at <a href="https://vytara-ssr.vercel.app" className="text-blue-600 hover:underline">https://vytara-ssr.vercel.app</a> ("Site"), you use our Vytara app and platform, you contact us, you sign up to
               our newsletter, or you otherwise engage us. We know that these aren't always the easiest documents to
               read, so we have tried to make this Policy as short and easy to understand as possible. We make updates to
               this Privacy Policy and will let you know by email when we do, so we encourage you to come back and have
@@ -414,7 +414,7 @@ return (
             <h3 className="font-semibold text-lg mb-4">Contact Us</h3>
             <div className="space-y-2 text-gray-400 text-sm">
               <p>Email: hello@vytara.com</p>
-              <p>Phone: 07738322228</p>
+              <p>Phone: 09511701519</p>
               <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
             </div>
           </div>
@@ -446,7 +446,7 @@ return (
               <h3 className="font-semibold text-xs mb-1">Contact Us</h3>
               <div className="space-y-0.5 text-gray-400 text-xs">
                 <p>Email: hello@vytara.com</p>
-                <p>Phone: 07738322228</p>
+                <p>Phone: 09511701519</p>
                 <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
               </div>
             </div>
@@ -475,3 +475,4 @@ return (
 
 
 export default PrivacyPolicyLayout;
+
