@@ -207,7 +207,7 @@ return (
           {/* Header */}
           <div className="mb-12">
             <p className="text-sm text-gray-600 mb-4">
-              Last updated: 17 November 2025
+              Last updated: 20th January 2026
             </p>
             <h1 className="text-5xl font-serif text-black mb-8">Vytara Health Data Privacy & Seurity</h1>
           </div>
@@ -539,3 +539,4 @@ Vytara does not provide medical diagnosis or treatment. Users should consult qua
 
 
 export default HealthDataPrivacyLayout;
+
