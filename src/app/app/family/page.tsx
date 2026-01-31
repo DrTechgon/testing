@@ -39,98 +39,123 @@ export default function FamilyPage() {
   const [inviteContact, setInviteContact] = useState('');
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [isSavingInvite, setIsSavingInvite] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadFamily = useCallback(async () => {
-    // Get session instead of just user
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
-    
-    if (error || !session?.user) {
-      return;
-    }
+    try {
+      setLoadError(null);
+      
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+      
+      if (error || !session?.user) {
+        setLoadError('Please sign in to view your family.');
+        return;
+      }
 
-    const user = session.user;
-    setCurrentUserId((prev) => (prev === user.id ? prev : user.id));
+      const user = session.user;
+      setCurrentUserId((prev) => (prev === user.id ? prev : user.id));
 
-    // Get initial display name from user metadata
-    let displayName =
-      user.user_metadata?.full_name ??
-      user.user_metadata?.name ??
-      user.phone ??
-      'Your';
+      let displayName =
+        user.user_metadata?.full_name ??
+        user.user_metadata?.name ??
+        user.phone ??
+        'Your';
 
-    // Fetch display name from personal table (like Care Circle does)
-    const { data: personal } = await supabase
-      .from('personal')
-      .select('display_name')
-      .eq('id', user.id)
-      .maybeSingle();
+      const { data: personal } = await supabase
+        .from('personal')
+        .select('display_name')
+        .eq('id', user.id)
+        .maybeSingle();
 
-    if (personal?.display_name) {
-      displayName = personal.display_name;
-    }
+      if (personal?.display_name) {
+        displayName = personal.display_name;
+      }
 
-    const familyName = `${displayName}'s Family`;
+      const familyName = `${displayName}'s Family`;
 
-    // Fetch family links
-    const response = await fetch('/api/family/links', { 
-      cache: 'no-store' 
-    });
-    
-    if (!response.ok) {
-      return;
-    }
+      // Fetch family links with better error handling
+      const response = await fetch('/api/family/links', { 
+        cache: 'no-store' 
+      });
+      
+      if (!response.ok) {
+        // Check if the response has content before trying to parse JSON
+        const errorText = await response.text();
+        let errorMessage = 'Unable to load family data.';
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // If response is not JSON, use the text or a default message
+          errorMessage = errorText || `Error ${response.status}: ${response.statusText}`;
+        }
+        
+        console.error('Failed to load family links:', errorMessage);
+        setLoadError(errorMessage);
+        
+        // Set default data so the page still renders
+        setFamilyData({
+          familyName,
+          ownerName: displayName,
+          myFamilyMembers: [],
+          familiesImIn: [],
+        });
+        return;
+      }
 
-    const linksData: {
-      outgoing: Array<{
-        id: string;
-        memberId: string;
-        status: FamilyStatus;
-        displayName: string;
-        createdAt: string;
-      }>;
-      incoming: Array<{
-        id: string;
-        memberId: string;
-        status: FamilyStatus;
-        displayName: string;
-        createdAt: string;
-      }>;
-    } = await response.json();
+      const linksData: {
+        outgoing: Array<{
+          id: string;
+          memberId: string;
+          status: FamilyStatus;
+          displayName: string;
+          createdAt: string;
+        }>;
+        incoming: Array<{
+          id: string;
+          memberId: string;
+          status: FamilyStatus;
+          displayName: string;
+          createdAt: string;
+        }>;
+      } = await response.json();
 
-    // Map outgoing links to family members
-    const myFamilyMembers = linksData.outgoing.map((link) => ({
-      id: link.memberId,
-      name: link.displayName,
-      status: link.status,
-    }));
-
-    // Map incoming links
-    const familiesImIn = linksData.incoming.map((link) => ({
-      id: link.memberId,
-      name: link.displayName,
-      status: link.status,
-    }));
-
-    // Extract pending invites
-    const nextPendingInvites = linksData.outgoing
-      .filter((link) => link.status === 'pending')
-      .map((link) => ({
-        id: link.id,
-        contact: link.displayName,
-        sentAt: link.createdAt,
+      const myFamilyMembers = linksData.outgoing.map((link) => ({
+        id: link.memberId,
+        name: link.displayName,
+        status: link.status,
       }));
 
-    setPendingInvites(nextPendingInvites);
+      const familiesImIn = linksData.incoming.map((link) => ({
+        id: link.memberId,
+        name: link.displayName,
+        status: link.status,
+      }));
 
-    setFamilyData({
-      familyName,
-      ownerName: displayName,
-      myFamilyMembers,
-      familiesImIn,
-    });
+      const nextPendingInvites = linksData.outgoing
+        .filter((link) => link.status === 'pending')
+        .map((link) => ({
+          id: link.id,
+          contact: link.displayName,
+          sentAt: link.createdAt,
+        }));
+
+      setPendingInvites(nextPendingInvites);
+
+      setFamilyData({
+        familyName,
+        ownerName: displayName,
+        myFamilyMembers,
+        familiesImIn,
+      });
+    } catch (error) {
+      console.error('Error loading family:', error);
+      setLoadError('An unexpected error occurred while loading family data.');
+    }
   }, []);
 
   useEffect(() => {
@@ -140,13 +165,22 @@ export default function FamilyPage() {
   const handleRemove = async (memberId: string) => {
     if (!currentUserId) return;
 
-    await supabase
-      .from('family_links')
-      .delete()
-      .eq('requester_id', currentUserId)
-      .eq('recipient_id', memberId);
+    try {
+      const { error } = await supabase
+        .from('family_links')
+        .delete()
+        .eq('requester_id', currentUserId)
+        .eq('recipient_id', memberId);
 
-    await loadFamily(); // Add await here
+      if (error) {
+        console.error('Error removing family member:', error);
+        return;
+      }
+
+      await loadFamily();
+    } catch (error) {
+      console.error('Error removing family member:', error);
+    }
   };
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
@@ -162,23 +196,39 @@ export default function FamilyPage() {
     setIsSavingInvite(true);
     setInviteError(null);
 
-    const response = await fetch('/api/family/invite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contact: trimmed }),
-    });
+    try {
+      const response = await fetch('/api/family/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: trimmed }),
+      });
 
-    if (!response.ok) {
-      const errorPayload: { message?: string } = await response.json();
-      setInviteError(errorPayload.message ?? 'Unable to send invite.');
+      if (!response.ok) {
+        // Better error handling for non-200 responses
+        const errorText = await response.text();
+        let errorMessage = 'Unable to send invite.';
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || `Error ${response.status}: ${response.statusText}`;
+        }
+        
+        setInviteError(errorMessage);
+        setIsSavingInvite(false);
+        return;
+      }
+
+      setInviteContact('');
+      setIsInviteOpen(false);
       setIsSavingInvite(false);
-      return;
+      await loadFamily();
+    } catch (error) {
+      console.error('Error sending invite:', error);
+      setInviteError('An unexpected error occurred. Please try again.');
+      setIsSavingInvite(false);
     }
-
-    setInviteContact('');
-    setIsInviteOpen(false);
-    setIsSavingInvite(false);
-    await loadFamily(); // Add await here
   };
 
   const activeMembers = useMemo(
@@ -189,6 +239,13 @@ export default function FamilyPage() {
   return (
     <div className="min-h-screen bg-[#f4f7f8]">
       <main className="max-w-6xl mx-auto px-6 py-10 space-y-6">
+
+        {/* Error Alert */}
+        {loadError && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+            <p className="text-rose-600 text-sm">{loadError}</p>
+          </div>
+        )}
 
         {/* Header */}
         <section className="bg-white rounded-3xl shadow-xl p-8">
