@@ -470,25 +470,7 @@ useEffect(() => {
   }, [userId]);
 
   return (
-    <div className="min-h-screen pb-10 font-sans relative">
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: -1 }}>
-        <Silk
-          speed={5}
-          scale={1}
-          color="#2abec0"
-          noiseIntensity={1.5}
-          rotation={0}
-        />
-      </div>
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: -1 }}>
-        <Silk
-          speed={5}
-          scale={1}
-          color="#2abec0"
-          noiseIntensity={1.5}
-          rotation={0}
-        />
-      </div>
+    <div className="min-h-screen pb-10 font-sans relative bg-[#F5F5DC]">
 
       {/* Navbar */}
       
@@ -499,16 +481,16 @@ useEffect(() => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6 items-stretch">
           
           {/* Left: Basic Info & KPIs */}
-          <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-xl shadow-teal-900/20 border border-white/20 flex flex-col h-full relative overflow-hidden">  
+          <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-xl shadow-amber-900/20 border border-white/20 flex flex-col h-full relative overflow-hidden">
             
             {/* Background Decoration */}
-            <div className="absolute top-0 right-0 w-40 h-40 sm:w-64 sm:h-64 bg-gradient-to-br from-teal-50 to-orange-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-80 pointer-events-none"></div>
+            <div className="absolute top-0 right-0 w-40 h-40 sm:w-64 sm:h-64 bg-gradient-to-br from-amber-50 to-brown-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-80 pointer-events-none"></div>
 
             {/* Edit and Export Buttons */}
             <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
               <button
                 onClick={exportToPDF}
-                className="px-4 py-2 bg-[#309898] text-white text-xs font-semibold uppercase tracking-wide rounded-full shadow-sm transition hover:bg-[#2a8b8b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#309898]/40"
+                className="px-4 py-2 bg-[#8B4513] text-white text-xs font-semibold uppercase tracking-wide rounded-full shadow-sm transition hover:bg-[#A0522D] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B4513]/40"
                 title="Export as PDF"
               >
                 Export as PDF
@@ -523,17 +505,10 @@ useEffect(() => {
 
             {/* Profile Info */}
             <div className="flex flex-col md:flex-row items-start gap-6 mb-8 mt-2 relative z-0">
-              {/* Switch Profile Button & Avatar */}
+              {/* Avatar */}
               <div className="flex flex-col items-center gap-3">
-                <div className="relative">
-                  <button className="flex items-center gap-2 px-3 py-2 bg-white/90 backdrop-blur hover:bg-white text-gray-700 rounded-full text-xs font-bold uppercase tracking-wider transition border border-gray-200 shadow-sm">
-                    <Users className="w-3 h-3 text-teal-600" />
-                    <span>Switch Profile</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-                </div>
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-teal-100 to-blue-100 flex items-center justify-center border-[4px] border-white shadow-lg shrink-0">
-                  <User className="w-8 h-8 sm:w-10 sm:h-10 text-teal-700/80" />
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center border-[4px] border-white shadow-lg shrink-0">
+                  <User className="w-8 h-8 sm:w-10 sm:h-10 text-amber-700/80" />
                 </div>
               </div>
 
@@ -550,20 +525,20 @@ useEffect(() => {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-teal-600 transition">
-                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-teal-50 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-amber-600 transition">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-amber-50 flex items-center justify-center">
                       <Phone className="w-3 h-3" />
                     </div>
                     <span>{phoneNumber}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-teal-600 transition">
-                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-teal-50 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-amber-600 transition">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-amber-50 flex items-center justify-center">
                       <Calendar className="w-3 h-3" />
                     </div>
                     <span>{dob}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-teal-600 transition">
-                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-teal-50 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 group hover:text-amber-600 transition">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 group-hover:bg-amber-50 flex items-center justify-center">
                       <Locate className="w-3 h-3" />
                     </div>
                     <span className='break-words whitespace-normal'>{address}</span>
@@ -604,7 +579,7 @@ useEffect(() => {
           </div>
 
           {/* Right: Historical Visits */}
-          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-teal-900/20 border border-white/20 flex flex-col h-full">
+          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-amber-900/20 border border-white/20 flex flex-col h-full">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
@@ -632,7 +607,7 @@ useEffect(() => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           
           {/* Current Medical Status */}
-          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-teal-900/20 border border-white/20">
+          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-amber-900/20 border border-white/20">
             <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
               <div className="p-2 bg-red-50 rounded-lg text-red-600">
                 <Activity className="w-5 h-5" />
@@ -709,7 +684,7 @@ useEffect(() => {
                     className='flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100'
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
                         <Pill className="w-4 h-4" />
                       </div>
 
@@ -730,7 +705,7 @@ useEffect(() => {
           </div>
 
           {/* Past Medical History */}
-          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-teal-900/20 border border-white/20">
+          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-amber-900/20 border border-white/20">
             <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
               <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
                 <History className="w-5 h-5" />
@@ -827,7 +802,7 @@ useEffect(() => {
         </div>
 
         {/* Family Medical History */}
-        <div className="bg-white rounded-3xl p-6 shadow-xl shadow-teal-900/20 border border-white/20 mb-6">
+        <div className="bg-white rounded-3xl p-6 shadow-xl shadow-amber-900/20 border border-white/20 mb-6">
           <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
             <div className="p-2 bg-green-50 rounded-lg text-green-600">
               <Users className="w-5 h-5" />
@@ -1007,7 +982,7 @@ useEffect(() => {
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2 bg-[#FF8000] text-white rounded-lg hover:bg-[#309898] transition"
+                      className="px-6 py-2 bg-[#8B4513] text-white rounded-lg hover:bg-[#A0522D] transition"
                     >
                       Save Changes
                     </button>
@@ -1256,7 +1231,7 @@ useEffect(() => {
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2 bg-[#FF8000] text-white rounded-lg hover:bg-[#309898] transition"
+                      className="px-6 py-2 bg-[#8B4513] text-white rounded-lg hover:bg-[#A0522D] transition"
                     >
                       Save Changes
                     </button>
@@ -1606,7 +1581,7 @@ useEffect(() => {
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2 bg-[#FF8000] text-white rounded-lg hover:bg-[#309898] transition"
+                      className="px-6 py-2 bg-[#8B4513] text-white rounded-lg hover:bg-[#A0522D] transition"
                     >
                       Save Changes
                     </button>
