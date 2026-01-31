@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, UserPlus, Trash2, X } from 'lucide-react';
+import { ChevronRight, UserPlus, Trash2, X, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/createClient';
 
 type FamilyStatus = 'pending' | 'accepted' | 'declined';
@@ -16,7 +16,7 @@ type FamilyData = {
   familyName: string;
   ownerName: string;
   myFamilyMembers: FamilyMember[];
-  familiesImIn: FamilyMember[];
+  familyImIn: FamilyMember | null;
 };
 
 type PendingInvite = {
@@ -30,7 +30,7 @@ export default function FamilyPage() {
     familyName: 'Loading…',
     ownerName: '',
     myFamilyMembers: [],
-    familiesImIn: [],
+    familyImIn: null,
   });
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -41,14 +41,14 @@ export default function FamilyPage() {
   const [isSavingInvite, setIsSavingInvite] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showMyPendingInvites, setShowMyPendingInvites] = useState(false);
-  const [showIncomingPendingInvites, setShowIncomingPendingInvites] = useState(false);
+  const [showIncomingPendingInvite, setShowIncomingPendingInvite] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const openTarget = params.get('open');
     if (openTarget === 'incoming-invites') {
-      setShowIncomingPendingInvites(true);
+      setShowIncomingPendingInvite(true);
       setShowMyPendingInvites(false);
     }
   }, []);
@@ -110,7 +110,7 @@ export default function FamilyPage() {
           familyName,
           ownerName: displayName,
           myFamilyMembers: [],
-          familiesImIn: [],
+          familyImIn: null,
         });
         return;
       }
@@ -138,11 +138,16 @@ export default function FamilyPage() {
         status: link.status,
       }));
 
-      const familiesImIn = linksData.incoming.map((link) => ({
-        id: link.memberId,
-        name: link.displayName,
-        status: link.status,
-      }));
+      // Since user can only be in one family, take the first accepted one
+      const acceptedFamily = linksData.incoming.find(link => link.status === 'accepted');
+      const pendingFamily = linksData.incoming.find(link => link.status === 'pending');
+      
+      // Prioritize accepted family, fallback to pending
+      const familyImIn = acceptedFamily 
+        ? { id: acceptedFamily.memberId, name: acceptedFamily.displayName, status: acceptedFamily.status as FamilyStatus }
+        : pendingFamily
+        ? { id: pendingFamily.memberId, name: pendingFamily.displayName, status: pendingFamily.status as FamilyStatus }
+        : null;
 
       const nextPendingInvites = linksData.outgoing
         .filter((link) => link.status === 'pending')
@@ -158,7 +163,7 @@ export default function FamilyPage() {
         familyName,
         ownerName: displayName,
         myFamilyMembers,
-        familiesImIn,
+        familyImIn,
       });
     } catch (error) {
       console.error('Error loading family:', error);
@@ -238,26 +243,44 @@ export default function FamilyPage() {
     }
   };
 
-  const handleAcceptFamilyInvite = async (memberId: string) => {
-    if (!currentUserId) return;
+  const handleAcceptFamilyInvite = async () => {
+    if (!currentUserId || !familyData.familyImIn) return;
     
     await supabase
       .from('family_links')
       .update({ status: 'accepted' })
       .eq('recipient_id', currentUserId)
-      .eq('requester_id', memberId);
+      .eq('requester_id', familyData.familyImIn.id);
     
     await loadFamily();
+    setShowIncomingPendingInvite(false);
   };
 
-  const handleDeclineFamilyInvite = async (memberId: string) => {
-    if (!currentUserId) return;
+  const handleDeclineFamilyInvite = async () => {
+    if (!currentUserId || !familyData.familyImIn) return;
     
     await supabase
       .from('family_links')
       .update({ status: 'declined' })
       .eq('recipient_id', currentUserId)
-      .eq('requester_id', memberId);
+      .eq('requester_id', familyData.familyImIn.id);
+    
+    await loadFamily();
+    setShowIncomingPendingInvite(false);
+  };
+
+  const handleLeaveFamily = async () => {
+    if (!currentUserId || !familyData.familyImIn) return;
+    
+    if (!confirm(`Are you sure you want to leave ${familyData.familyImIn.name}'s family?`)) {
+      return;
+    }
+
+    await supabase
+      .from('family_links')
+      .delete()
+      .eq('recipient_id', currentUserId)
+      .eq('requester_id', familyData.familyImIn.id);
     
     await loadFamily();
   };
@@ -269,18 +292,8 @@ export default function FamilyPage() {
     [familyData.myFamilyMembers, currentUserId]
   );
 
-  const pendingFamilyInvites = useMemo(
-    () => familyData.familiesImIn.filter((member) => member.status === 'pending'),
-    [familyData.familiesImIn]
-  );
-
-  const activeFamiliesImIn = useMemo(
-    () => familyData.familiesImIn.filter((member) => member.status === 'accepted'),
-    [familyData.familiesImIn]
-  );
-
+  const hasPendingIncomingInvite = familyData.familyImIn?.status === 'pending';
   const hasMyPendingInvites = pendingInvites.length > 0;
-  const hasIncomingPendingInvites = pendingFamilyInvites.length > 0;
 
   return (
     <div className="min-h-screen bg-[#f4f7f8]">
@@ -339,7 +352,7 @@ export default function FamilyPage() {
                   type="button"
                   onClick={() => {
                     setShowMyPendingInvites(true);
-                    setShowIncomingPendingInvites(false);
+                    setShowIncomingPendingInvite(false);
                   }}
                   className="w-full flex items-center justify-between text-left rounded-xl px-2 py-2 -mx-2 transition hover:bg-slate-50"
                 >
@@ -401,71 +414,76 @@ export default function FamilyPage() {
             </div>
           </section>
 
-          {/* Families I'm In */}
+          {/* Family I'm In */}
           <section className="bg-white rounded-3xl border border-white/20 shadow-xl shadow-teal-900/10 p-6 md:p-8">
             <div>
               <h2 className="text-2xl font-semibold text-slate-900">
-                Families I&apos;m In
+                Family I&apos;m In
               </h2>
               <p className="text-slate-500 text-sm">
-                Families managed by others that you&apos;re part of.
+                You can only be part of one family at a time.
               </p>
             </div>
 
             <div className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowIncomingPendingInvites(true);
-                    setShowMyPendingInvites(false);
-                  }}
-                  className="w-full flex items-center justify-between text-left rounded-xl px-2 py-2 -mx-2 transition hover:bg-slate-50"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      Pending invites
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Tap to view pending invites
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {hasIncomingPendingInvites && (
+              {hasPendingIncomingInvite && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowIncomingPendingInvite(true);
+                      setShowMyPendingInvites(false);
+                    }}
+                    className="w-full flex items-center justify-between text-left rounded-xl px-2 py-2 -mx-2 transition hover:bg-amber-100/50"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-amber-900">
+                        New family invite
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        You have a pending invitation
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                        {pendingFamilyInvites.length}
+                        1
                       </span>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </div>
-                </button>
-              </div>
+                      <ChevronRight className="h-4 w-4 text-amber-600" />
+                    </div>
+                  </button>
+                </div>
+              )}
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-slate-700">
-                    Active families
+                    Current family
                   </h3>
-                  <span className="text-xs font-semibold text-slate-500">
-                    {activeFamiliesImIn.length}
-                  </span>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {activeFamiliesImIn.length === 0 ? (
+                  {!familyData.familyImIn || familyData.familyImIn.status !== 'accepted' ? (
                     <p className="text-sm text-slate-500">
-                      You are not part of any other families yet.
+                      You are not part of any family yet.
                     </p>
                   ) : (
-                    activeFamiliesImIn.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                      >
-                        <span className="font-medium text-slate-900">
-                          {member.name}
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                      <div>
+                        <span className="font-medium text-slate-900 block">
+                          {familyData.familyImIn.name}&apos;s Family
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          Managed by {familyData.familyImIn.name}
                         </span>
                       </div>
-                    ))
+                      <button
+                        type="button"
+                        onClick={handleLeaveFamily}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Leave
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -519,59 +537,55 @@ export default function FamilyPage() {
         </div>
       )}
 
-      {/* Incoming Pending Invites Modal */}
-      {showIncomingPendingInvites && (
+      {/* Incoming Pending Invite Modal */}
+      {showIncomingPendingInvite && familyData.familyImIn?.status === 'pending' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  Pending invites
+                  Family invitation
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Invites you&apos;ve received
+                  You&apos;ve been invited to join a family
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowIncomingPendingInvites(false)}
+                onClick={() => setShowIncomingPendingInvite(false)}
                 className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
-                aria-label="Close pending invites"
+                aria-label="Close invite"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-4 space-y-3">
-              {pendingFamilyInvites.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  There are no pending invites.
-                </p>
-              ) : (
-                pendingFamilyInvites.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between"
+            <div className="mt-4">
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {familyData.familyImIn.name}&apos;s Family
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Managed by {familyData.familyImIn.name}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleAcceptFamilyInvite}
+                    className="inline-flex items-center justify-center rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
                   >
-                    <span>{member.name}</span>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptFamilyInvite(member.id)}
-                        className="inline-flex items-center justify-center rounded-full bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeclineFamilyInvite(member.id)}
-                        className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        Decline
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+                    Accept invitation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeclineFamilyInvite}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
