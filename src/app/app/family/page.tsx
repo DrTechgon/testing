@@ -1,823 +1,1545 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, UserPlus, Trash2, X, LogOut, HeartPulse } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Modal from '@/components/Modal';
 import { supabase } from '@/lib/createClient';
 
-type FamilyStatus = 'pending' | 'accepted' | 'declined';
+type FamilyRole = 'owner' | 'member';
 
-type FamilyMember = {
+type FamilyInfo = {
   id: string;
   name: string;
-  status?: FamilyStatus;
+  role: FamilyRole;
 };
 
-type FamilyData = {
-  familyName: string;
-  members: FamilyMember[];
-  incomingInvite: FamilyMember | null;
+type FamilyMemberRow = {
+  family_id: string;
+  role: FamilyRole;
 };
 
-type PendingInvite = {
+type CreateFamilyResult = {
+  family_id: string;
+  name: string;
+};
+
+type JoinFamilyResult = {
+  family_id: string;
+  name: string;
+};
+
+type CreateInviteResult = {
+  invite_code: string;
+  family_id: string;
+};
+
+type PreviewInviteResult = {
+  family_id: string;
+  name: string;
+};
+
+type FamilyMemberDisplay = {
+  user_id: string;
+  role: FamilyRole;
+  name: string;
+};
+
+type JoinRequestRow = {
   id: string;
-  contact: string;
-  sentAt: string;
+  requester_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
 };
 
-type HealthRecord = {
+type JoinRequestDisplay = JoinRequestRow & {
+  display_name: string;
+};
+
+type RequestJoinResult = {
+  family_id: string;
+  name: string;
+};
+
+type PendingRequestInfo = {
+  id: string;
+  family_id: string;
+  family_name: string;
+};
+
+type MemberDetailsPersonal = {
+  display_name: string | null;
+  phone: string | null;
+  gender?: string | null;
+  address?: string | null;
+} | null;
+
+type MemberDetailsHealth = {
   date_of_birth: string | null;
   blood_group: string | null;
+  bmi: number | null;
+  age: number | null;
   current_diagnosed_condition: string[] | null;
   allergies: string[] | null;
   ongoing_treatments: string[] | null;
-  current_medication: Array<{ name: string; dosage: string; frequency: string }> | null;
-  bmi: number | null;
-  age: number | null;
+  current_medication: { name: string; dosage?: string; frequency?: string }[] | null;
+  previous_diagnosed_conditions: string[] | null;
+  past_surgeries: { name: string; month: number; year: number }[] | null;
+  childhood_illness: string[] | null;
+  long_term_treatments: string[] | null;
+} | null;
+
+type MemberDetailsAppointment = {
+  id: string;
+  date: string;
+  time: string;
+  title: string;
+  type: string;
+  [key: string]: string;
 };
 
-const RELATION_OPTIONS = [
-  'Father',
-  'Mother',
-  'Son',
-  'Daughter',
-  'Spouse',
-  'Brother',
-  'Sister',
-  'Grandparent',
-  'Grandchild',
-  'Other',
-];
+type MemberDetailsMedication = {
+  id: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  purpose?: string;
+  timesPerDay?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+type MemberDetailsPayload = {
+  personal: MemberDetailsPersonal;
+  health: MemberDetailsHealth;
+  appointments: MemberDetailsAppointment[];
+  medications: MemberDetailsMedication[];
+};
+
+const readRpcRow = <T,>(data: T[] | T | null) => {
+  if (!data) return null;
+  return Array.isArray(data) ? data[0] : data;
+};
+
+const normalizeInviteCode = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');
+const JOIN_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
+const FAMILY_MEMBER_LIMIT = 10;
+
+const resolveInviteErrorMessage = (error: { message?: string; code?: string }) => {
+  const message = (error.message || '').toLowerCase();
+  if (message.includes('not_authenticated')) {
+    return 'Please sign in to continue.';
+  }
+  if (message.includes('not_owner') || message.includes('owner_only')) {
+    return 'Only the owner can invite members.';
+  }
+  return error.message ? `Unable to create an invite code: ${error.message}` : 'Unable to create an invite code. Please try again.';
+};
+
+const formatLocalDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const normalizeAppointmentDate = (value: string | null | undefined) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return formatLocalDate(parsed);
+};
 
 export default function FamilyPage() {
-  const [familyData, setFamilyData] = useState<FamilyData>({
-    familyName: 'Loading…',
-    members: [],
-    incomingInvite: null,
-  });
+  const [userId, setUserId] = useState('');
+  const [family, setFamily] = useState<FamilyInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [pageMessage, setPageMessage] = useState<string | null>(null);
+  const familyRequestIdRef = useRef(0);
+  const lastFamilyActionRef = useRef<number | null>(null);
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [inviteContact, setInviteContact] = useState('');
+  const [isJoinRequestsOpen, setIsJoinRequestsOpen] = useState(false);
+
+  const [createName, setCreateName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [isSavingInvite, setIsSavingInvite] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [showMyPendingInvites, setShowMyPendingInvites] = useState(false);
-  const [showIncomingPendingInvite, setShowIncomingPendingInvite] = useState(false);
-  const [memberRelations, setMemberRelations] = useState<Record<string, string>>({});
-  const [savingRelations, setSavingRelations] = useState<Set<string>>(new Set());
-  const [healthByMember, setHealthByMember] = useState<Record<string, HealthRecord | null>>({});
-  const [healthError, setHealthError] = useState<string | null>(null);
-  const [healthLoading, setHealthLoading] = useState<string | null>(null);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [joinPreview, setJoinPreview] = useState<PreviewInviteResult | null>(null);
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
+  const [members, setMembers] = useState<FamilyMemberDisplay[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [joinRequests, setJoinRequests] = useState<JoinRequestDisplay[]>([]);
+  const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
+  const [joinRequestsError, setJoinRequestsError] = useState<string | null>(null);
+  const [pendingJoinFamily, setPendingJoinFamily] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<PendingRequestInfo | null>(null);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const openTarget = params.get('open');
-    if (openTarget === 'incoming-invites') {
-      setShowIncomingPendingInvite(true);
-      setShowMyPendingInvites(false);
-    }
-  }, []);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [isInviteLoading, setIsInviteLoading] = useState(false);
 
-  const loadFamily = useCallback(async () => {
-    try {
-      setLoadError(null);
+  const [createdFamily, setCreatedFamily] = useState<FamilyInfo | null>(null);
+  const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
 
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
+  const [selectedMember, setSelectedMember] = useState<FamilyMemberDisplay | null>(null);
+  const [memberDetails, setMemberDetails] = useState<MemberDetailsPayload | null>(null);
+  const [memberDetailsLoading, setMemberDetailsLoading] = useState(false);
+  const [memberDetailsError, setMemberDetailsError] = useState<string | null>(null);
+  const [memberDetailsTab, setMemberDetailsTab] = useState<'personal' | 'appointments' | 'medications'>('personal');
 
-      if (error || !session?.user) {
-        setLoadError('Please sign in to view your family.');
+  const isFamilyAtCapacity = !!family && members.length >= FAMILY_MEMBER_LIMIT;
+
+  const loadFamily = useCallback(
+    async (currentUserId: string) => {
+      const requestId = ++familyRequestIdRef.current;
+      const allowStale =
+        family &&
+        lastFamilyActionRef.current !== null &&
+        Date.now() - lastFamilyActionRef.current < 15_000;
+
+      if (!currentUserId) {
+        if (!allowStale) {
+          setFamily(null);
+        }
+        setIsLoading(false);
         return;
       }
 
-      const user = session.user;
-      setCurrentUserId((prev) => (prev === user.id ? prev : user.id));
+      setIsLoading(true);
+      setPageMessage(null);
 
-      let displayName =
-        user.user_metadata?.full_name ??
-        user.user_metadata?.name ??
-        user.phone ??
-        'Your';
-
-      const { data: personal } = await supabase
-        .from('personal')
-        .select('display_name')
-        .eq('id', user.id)
+      const { data: memberData, error: memberError } = await supabase
+        .from('family_members')
+        .select('family_id, role')
+        .eq('user_id', currentUserId)
         .maybeSingle();
 
-      if (personal?.display_name) {
-        displayName = personal.display_name;
-      }
+      if (requestId !== familyRequestIdRef.current) return;
 
-      const response = await fetch('/api/family/links', {
-        cache: 'no-store',
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Unable to load family data.';
-
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || `Error ${response.status}: ${response.statusText}`;
-        }
-
-        console.error('Failed to load family links:', errorMessage);
-        setLoadError(errorMessage);
-
-        setFamilyData({
-          familyName: `${displayName}'s Family`,
-          members: [],
-          incomingInvite: null,
-        });
+      if (memberError && memberError.code !== 'PGRST116') {
+        setPageMessage('Unable to load your family right now.');
+        setIsLoading(false);
         return;
       }
 
-      const linksData: {
-        familyMembers: Array<{ id: string; displayName: string }>;
-        outgoing: Array<{
-          id: string;
-          memberId: string;
-          status: FamilyStatus;
-          displayName: string;
-          createdAt: string;
-        }>;
-        incoming: Array<{
-          id: string;
-          memberId: string;
-          status: FamilyStatus;
-          displayName: string;
-          createdAt: string;
-        }>;
-      } = await response.json();
+      const memberRow = memberData as FamilyMemberRow | null;
+      if (!memberRow) {
+        if (!allowStale) {
+          setFamily(null);
+        }
+        setIsLoading(false);
+        return;
+      }
 
-      const familyName = `${displayName}'s Family`;
+      const { data: familyData, error: familyError } = await supabase
+        .from('families')
+        .select('id, name')
+        .eq('id', memberRow.family_id)
+        .maybeSingle();
 
-      const members = linksData.familyMembers.map((member) => ({
-        id: member.id,
-        name: member.displayName,
-      }));
+      if (requestId !== familyRequestIdRef.current) return;
 
-      const acceptedFamily = linksData.incoming.find((link) => link.status === 'accepted');
-      const pendingFamily = linksData.incoming.find((link) => link.status === 'pending');
+      if (familyError && familyError.code !== 'PGRST116') {
+        setPageMessage('Unable to load your family right now.');
+        setIsLoading(false);
+        return;
+      }
 
-      const incomingInvite = acceptedFamily
-        ? {
-            id: acceptedFamily.memberId,
-            name: acceptedFamily.displayName,
-            status: acceptedFamily.status,
-          }
-        : pendingFamily
-        ? {
-            id: pendingFamily.memberId,
-            name: pendingFamily.displayName,
-            status: pendingFamily.status,
-          }
-        : null;
-
-      const nextPendingInvites = linksData.outgoing
-        .filter((link) => link.status === 'pending')
-        .map((link) => ({
-          id: link.id,
-          contact: link.displayName,
-          sentAt: link.createdAt,
-        }));
-
-      setPendingInvites(nextPendingInvites);
-
-      setFamilyData({
-        familyName,
-        members,
-        incomingInvite,
+      const resolvedName = familyData?.name ?? family?.name ?? 'Your Family';
+      setFamily({
+        id: memberRow.family_id,
+        name: resolvedName,
+        role: memberRow.role,
       });
-    } catch (error) {
-      console.error('Error loading family:', error);
-      setLoadError('An unexpected error occurred while loading family data.');
+      setIsLoading(false);
+    },
+    [family]
+  );
+
+  const loadMembers = useCallback(async (familyId: string) => {
+    setMembersLoading(true);
+    setMembersError(null);
+
+    const { data: memberRows, error: memberError } = await supabase
+      .from('family_members')
+      .select('user_id, role')
+      .eq('family_id', familyId);
+
+    if (memberError) {
+      setMembersError('Unable to load family members.');
+      setMembersLoading(false);
+      return;
     }
+
+    const rows = (memberRows ?? []) as Array<{ user_id: string; role: FamilyRole }>;
+    if (rows.length === 0) {
+      setMembers([]);
+      setMembersLoading(false);
+      return;
+    }
+
+    const userIds = rows.map((row) => row.user_id);
+    const { data: personalRows } = await supabase
+      .from('personal')
+      .select('id, display_name')
+      .in('id', userIds);
+
+    const nameMap = new Map(
+      (personalRows ?? []).map((row: { id: string; display_name: string | null }) => [
+        row.id,
+        row.display_name?.trim() || '',
+      ])
+    );
+
+    const hydrated = rows.map((row) => ({
+      user_id: row.user_id,
+      role: row.role,
+      name: nameMap.get(row.user_id) || 'Member',
+    }));
+
+    hydrated.sort((a, b) => {
+      if (a.role !== b.role) return a.role === 'owner' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    setMembers(hydrated);
+    setMembersLoading(false);
+  }, []);
+
+  const loadJoinRequests = useCallback(async (familyId: string) => {
+    setJoinRequestsLoading(true);
+    setJoinRequestsError(null);
+    const cutoff = new Date(Date.now() - JOIN_REQUEST_TTL_MS).toISOString();
+
+    const { data, error } = await supabase
+      .from('family_join_requests')
+      .select('id, requester_id, status, created_at')
+      .eq('family_id', familyId)
+      .eq('status', 'pending')
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      setJoinRequestsError('Unable to load join requests.');
+      setJoinRequestsLoading(false);
+      return;
+    }
+
+    const rows = (data ?? []) as JoinRequestRow[];
+    if (rows.length === 0) {
+      setJoinRequests([]);
+      setJoinRequestsLoading(false);
+      return;
+    }
+
+    const requesterIds = rows.map((row) => row.requester_id);
+    const { data: personalRows } = await supabase
+      .from('personal')
+      .select('id, display_name')
+      .in('id', requesterIds);
+
+    const nameMap = new Map(
+      (personalRows ?? []).map((row: { id: string; display_name: string | null }) => [
+        row.id,
+        row.display_name?.trim() || '',
+      ])
+    );
+
+    const hydrated = rows.map((row) => ({
+      ...row,
+      display_name: nameMap.get(row.requester_id) || 'Member',
+    }));
+
+    setJoinRequests(hydrated);
+    setJoinRequestsLoading(false);
+  }, []);
+
+  const loadPendingRequest = useCallback(async (currentUserId: string) => {
+    if (!currentUserId) {
+      setPendingRequest(null);
+      return;
+    }
+    const cutoff = new Date(Date.now() - JOIN_REQUEST_TTL_MS).toISOString();
+
+    const { data: requestRow } = await supabase
+      .from('family_join_requests')
+      .select('id, family_id, status')
+      .eq('requester_id', currentUserId)
+      .eq('status', 'pending')
+      .gte('created_at', cutoff)
+      .maybeSingle();
+
+    if (!requestRow) {
+      setPendingRequest(null);
+      return;
+    }
+
+    const { data: familyRow } = await supabase
+      .from('families')
+      .select('name')
+      .eq('id', requestRow.family_id)
+      .maybeSingle();
+
+    setPendingRequest({
+      id: requestRow.id,
+      family_id: requestRow.family_id,
+      family_name: familyRow?.name ?? 'This family',
+    });
   }, []);
 
   useEffect(() => {
-    loadFamily();
-  }, [loadFamily]);
+    const init = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const nextUserId = session?.user?.id ?? '';
+      setUserId((prev) => (prev === nextUserId ? prev : nextUserId));
+      setIsAuthReady(true);
+    };
+    init();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id ?? '';
+      setUserId((prev) => (prev === nextUserId ? prev : nextUserId));
+      setIsAuthReady(true);
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
-    const fetchRelations = async () => {
-      if (!currentUserId || familyData.members.length === 0) return;
-      const memberIds = familyData.members
-        .filter((member) => member.id !== currentUserId)
-        .map((member) => member.id);
-      if (memberIds.length === 0) return;
+    if (!isAuthReady) return;
+    loadFamily(userId);
+    loadPendingRequest(userId);
+  }, [isAuthReady, loadFamily, loadPendingRequest, userId]);
 
+  useEffect(() => {
+    if (!family?.id) {
+      setMembers([]);
+      return;
+    }
+    loadMembers(family.id);
+  }, [family?.id, loadMembers]);
+
+  useEffect(() => {
+    if (!family?.id || family.role !== 'owner') {
+      setJoinRequests([]);
+      return;
+    }
+    loadJoinRequests(family.id);
+  }, [family?.id, family?.role, loadJoinRequests]);
+
+  useEffect(() => {
+    if (family) {
+      setPendingJoinFamily(null);
+      setPendingRequest(null);
+    }
+  }, [family]);
+
+  useEffect(() => {
+    if (!selectedMember) {
+      setMemberDetails(null);
+      setMemberDetailsError(null);
+      setMemberDetailsTab('personal');
+      return;
+    }
+    let cancelled = false;
+    setMemberDetailsLoading(true);
+    setMemberDetailsError(null);
+    setMemberDetails(null);
+
+    (async () => {
       try {
-        const response = await fetch(`/api/family/relations?memberIds=${memberIds.join(',')}`, {
-          cache: 'no-store',
-        });
-        if (!response.ok) return;
-        const data: { relations: Record<string, string> } = await response.json();
-        setMemberRelations(data.relations || {});
-      } catch (error) {
-        console.error('Failed to load relations', error);
+        const res = await fetch(
+          `/api/family/member/details?memberId=${encodeURIComponent(selectedMember.user_id)}`
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.message ?? 'Failed to load member details');
+        }
+        const data = (await res.json()) as MemberDetailsPayload;
+        if (!cancelled) {
+          setMemberDetails(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMemberDetailsError(err instanceof Error ? err.message : 'Failed to load member details');
+        }
+      } finally {
+        if (!cancelled) {
+          setMemberDetailsLoading(false);
+        }
       }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMember]);
+
+  const closeMemberDetailsModal = () => {
+    setSelectedMember(null);
+    setMemberDetails(null);
+    setMemberDetailsError(null);
+    setMemberDetailsTab('personal');
+  };
+
+  const openCreateModal = () => {
+    if (family) {
+      setPageMessage('You can only create one family.');
+      return;
+    }
+    if (pendingRequest) {
+      setPageMessage('You already have a pending join request.');
+      return;
+    }
+    setPageMessage(null);
+    setCreateName('');
+    setCreateError(null);
+    setCreatedFamily(null);
+    setCreatedInviteCode(null);
+    setInviteMessage(null);
+    setIsCreateOpen(true);
+  };
+
+  const openJoinModal = () => {
+    if (family) {
+      setPageMessage('You are already part of a family.');
+      return;
+    }
+    if (pendingRequest) {
+      setPageMessage('You already have a pending join request.');
+      return;
+    }
+    setPageMessage(null);
+    setJoinCode('');
+    setJoinError(null);
+    setJoinPreview(null);
+    setPreviewCode(null);
+    setInviteMessage(null);
+    setIsJoinOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    setIsCreateOpen(false);
+    setCreateError(null);
+    setCreatedFamily(null);
+    setCreatedInviteCode(null);
+    setInviteMessage(null);
+  };
+
+  const closeJoinModal = () => {
+    setIsJoinOpen(false);
+    setJoinError(null);
+    setJoinPreview(null);
+    setPreviewCode(null);
+    setInviteMessage(null);
+  };
+
+  const closeInviteModal = () => {
+    setIsInviteOpen(false);
+    setInviteMessage(null);
+    setInviteError(null);
+    setInviteCode(null);
+    setIsInviteLoading(false);
+  };
+
+  const openJoinRequestsModal = () => setIsJoinRequestsOpen(true);
+  const closeJoinRequestsModal = () => setIsJoinRequestsOpen(false);
+
+  const handleCopy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setInviteMessage('Copied to clipboard.');
+    } catch {
+      setInviteMessage('Unable to copy. Please copy manually.');
+    }
+  };
+
+  const fetchInviteCode = useCallback(async () => {
+    if (!userId) {
+      setInviteError('Please sign in to continue.');
+      return;
+    }
+    if (isFamilyAtCapacity) {
+      setInviteError(`This family already has ${FAMILY_MEMBER_LIMIT} members.`);
+      return;
+    }
+
+    setIsInviteLoading(true);
+    setInviteError(null);
+    setInviteCode(null);
+    setInviteMessage(null);
+
+    const { data, error } = await supabase.rpc('create_family_invite');
+
+    if (error) {
+      setInviteError(resolveInviteErrorMessage(error));
+      setIsInviteLoading(false);
+      return;
+    }
+
+    const row = readRpcRow<CreateInviteResult>(
+      data as CreateInviteResult[] | CreateInviteResult | null
+    );
+    if (!row?.invite_code) {
+      setInviteError('Unable to create an invite code. Please try again.');
+      setIsInviteLoading(false);
+      return;
+    }
+
+    setInviteCode(row.invite_code);
+    setIsInviteLoading(false);
+  }, [isFamilyAtCapacity, userId]);
+
+
+  const openInviteModal = useCallback(() => {
+    setInviteMessage(null);
+    setInviteError(null);
+    setInviteCode(null);
+    setIsInviteOpen(true);
+
+    if (!family) return;
+    if (family.role !== 'owner') {
+      setInviteError('Only the owner can invite members.');
+      return;
+    }
+    if (isFamilyAtCapacity) {
+      setInviteError(`This family already has ${FAMILY_MEMBER_LIMIT} members.`);
+      return;
+    }
+
+    fetchInviteCode();
+  }, [family, fetchInviteCode, isFamilyAtCapacity]);
+
+  const fetchFamilyCapacity = useCallback(async (familyId: string) => {
+    try {
+      const res = await fetch(
+        `/api/family/capacity?familyId=${encodeURIComponent(familyId)}`
+      );
+      if (!res.ok) {
+        return null;
+      }
+      const data = (await res.json()) as {
+        memberCount?: number;
+        limit?: number;
+        isFull?: boolean;
+      };
+      return {
+        memberCount: data.memberCount ?? 0,
+        limit: data.limit ?? FAMILY_MEMBER_LIMIT,
+        isFull: Boolean(data.isFull),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleCreate = async () => {
+    if (!userId) {
+      setCreateError('Please sign in to continue.');
+      return;
+    }
+    if (family) {
+      setCreateError('You can only create one family.');
+      return;
+    }
+    if (pendingRequest) {
+      setCreateError('You already have a pending join request.');
+      return;
+    }
+
+    const trimmedName = createName.trim();
+    if (trimmedName.length < 2 || trimmedName.length > 50) {
+      setCreateError('Family name must be 2–50 characters.');
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+    setInviteMessage(null);
+
+    const { data, error } = await supabase.rpc('create_family', {
+      family_name: trimmedName,
+    });
+
+    if (error) {
+      const message = (error.message || '').toLowerCase();
+      if (message.includes('not_authenticated')) {
+        setCreateError('Please sign in to continue.');
+      } else if (message.includes('already_in_family') || error.code === '23505') {
+        setCreateError('You can only create one family.');
+      } else if (message.includes('invalid_name')) {
+        setCreateError('Family name must be 2–50 characters.');
+      } else {
+        setCreateError(
+          error.message
+            ? `Unable to create your family: ${error.message}`
+            : 'Unable to create your family. Please try again.'
+        );
+      }
+      setIsCreating(false);
+      return;
+    }
+
+    const row = readRpcRow<CreateFamilyResult>(
+      data as CreateFamilyResult[] | CreateFamilyResult | null
+    );
+    if (!row) {
+      setCreateError('Unable to create your family. Please try again.');
+      setIsCreating(false);
+      return;
+    }
+
+    const nextFamily = {
+      id: row.family_id,
+      name: row.name,
+      role: 'owner',
     };
 
-    fetchRelations();
-  }, [currentUserId, familyData.members]);
+    setFamily(nextFamily);
+    setCreatedFamily(nextFamily);
+    lastFamilyActionRef.current = Date.now();
 
-  const handleRemove = async (memberId: string) => {
-    if (!currentUserId) return;
+    const { data: inviteData, error: inviteErrorResponse } =
+      await supabase.rpc('create_family_invite');
 
-    try {
-      const { error } = await supabase
-        .from('family_links')
-        .delete()
-        .or(
-          `and(requester_id.eq.${currentUserId},recipient_id.eq.${memberId}),and(requester_id.eq.${memberId},recipient_id.eq.${currentUserId})`
+    if (inviteErrorResponse) {
+      setCreateError(
+        'Family created, but we could not generate an invite code yet. Use Invite Member to try again.'
+      );
+      setIsCreating(false);
+      return;
+    }
+
+    const inviteRow = readRpcRow<CreateInviteResult>(
+      inviteData as CreateInviteResult[] | CreateInviteResult | null
+    );
+    if (!inviteRow?.invite_code) {
+      setCreateError(
+        'Family created, but we could not generate an invite code yet. Use Invite Member to try again.'
+      );
+      setIsCreating(false);
+      return;
+    }
+
+    setCreatedInviteCode(inviteRow.invite_code);
+    setIsCreating(false);
+    await loadFamily(userId);
+  };
+
+  const handleJoinPreview = async () => {
+    if (!userId) {
+      setJoinError('Please sign in to continue.');
+      return;
+    }
+    if (family) {
+      setJoinError('You are already part of a family.');
+      return;
+    }
+    if (pendingRequest) {
+      setJoinError('You already have a pending join request.');
+      return;
+    }
+
+    const normalized = normalizeInviteCode(joinCode);
+    if (!normalized) {
+      setJoinError('Family code is required.');
+      return;
+    }
+    if (normalized.length < 6 || normalized.length > 12) {
+      setJoinError('Family code must be 6–12 characters.');
+      return;
+    }
+    if (!/^[A-Z0-9]+$/.test(normalized)) {
+      setJoinError('Family code must be alphanumeric.');
+      return;
+    }
+
+    setIsJoining(true);
+    setJoinError(null);
+    setInviteMessage(null);
+
+    const { data, error } = await supabase.rpc('preview_family_invite', {
+      invite_code: normalized,
+    });
+
+    if (error) {
+      const message = (error.message || '').toLowerCase();
+      if (message.includes('not_authenticated')) {
+        setJoinError('Please sign in to continue.');
+      } else if (message.includes('invalid_code')) {
+        setJoinError('Invalid code.');
+      } else if (message.includes('already_in_family') || error.code === '23505') {
+        setJoinError('You are already part of a family.');
+      } else if (message.includes('request_exists') || message.includes('pending_request')) {
+        setJoinError('You already have a pending join request.');
+      } else {
+        setJoinError(
+          error.message
+            ? `Unable to validate this invite code: ${error.message}`
+            : 'Unable to validate this invite code. Please try again.'
         );
-
-      if (error) {
-        console.error('Error removing family member:', error);
-        return;
       }
-
-      await loadFamily();
-    } catch (error) {
-      console.error('Error removing family member:', error);
-    }
-  };
-
-  const handleInviteSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = inviteContact.trim();
-    if (!trimmed) return;
-
-    if (!currentUserId) {
-      setInviteError('Please sign in again to send invites.');
+      setIsJoining(false);
       return;
     }
 
-    setIsSavingInvite(true);
-    setInviteError(null);
-
-    try {
-      const response = await fetch('/api/family/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact: trimmed }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Unable to send invite.';
-
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || `Error ${response.status}: ${response.statusText}`;
-        }
-
-        setInviteError(errorMessage);
-        setIsSavingInvite(false);
-        return;
-      }
-
-      setInviteContact('');
-      setIsInviteOpen(false);
-      setIsSavingInvite(false);
-      await loadFamily();
-    } catch (error) {
-      console.error('Error sending invite:', error);
-      setInviteError('An unexpected error occurred. Please try again.');
-      setIsSavingInvite(false);
-    }
-  };
-
-  const handleAcceptFamilyInvite = async () => {
-    if (!currentUserId || !familyData.incomingInvite) return;
-
-    await supabase
-      .from('family_links')
-      .update({ status: 'accepted' })
-      .eq('recipient_id', currentUserId)
-      .eq('requester_id', familyData.incomingInvite.id);
-
-    await loadFamily();
-    setShowIncomingPendingInvite(false);
-  };
-
-  const handleDeclineFamilyInvite = async () => {
-    if (!currentUserId || !familyData.incomingInvite) return;
-
-    await supabase
-      .from('family_links')
-      .update({ status: 'declined' })
-      .eq('recipient_id', currentUserId)
-      .eq('requester_id', familyData.incomingInvite.id);
-
-    await loadFamily();
-    setShowIncomingPendingInvite(false);
-  };
-
-  const handleLeaveFamily = async () => {
-    if (!currentUserId) return;
-
-    if (!confirm('Are you sure you want to leave this family?')) {
+    const row = readRpcRow<PreviewInviteResult>(
+      data as PreviewInviteResult[] | PreviewInviteResult | null
+    );
+    if (!row) {
+      setJoinError('Unable to validate this invite code. Please try again.');
+      setIsJoining(false);
       return;
     }
 
-    await supabase
-      .from('family_links')
-      .delete()
-      .or(`requester_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`);
-
-    await loadFamily();
-  };
-
-  const handleRelationChange = async (memberId: string, relation: string) => {
-    if (!currentUserId) return;
-    setMemberRelations((prev) => ({ ...prev, [memberId]: relation }));
-    setSavingRelations((prev) => new Set(prev).add(memberId));
-
-    try {
-      await fetch('/api/family/relations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId, relation }),
-      });
-    } catch (error) {
-      console.error('Failed to save relation', error);
-    } finally {
-      setSavingRelations((prev) => {
-        const next = new Set(prev);
-        next.delete(memberId);
-        return next;
-      });
+    const capacity = await fetchFamilyCapacity(row.family_id);
+    if (!capacity) {
+      setJoinError('Unable to verify family capacity. Please try again.');
+      setIsJoining(false);
+      return;
     }
+    if (capacity.isFull) {
+      setJoinError(`This family already has ${capacity.limit} members. You cannot join at this time.`);
+      setIsJoining(false);
+      return;
+    }
+
+    setJoinPreview({ family_id: row.family_id, name: row.name });
+    setPreviewCode(normalized);
+    lastFamilyActionRef.current = Date.now();
+    setIsJoining(false);
   };
 
-  const handleViewHealth = async (member: FamilyMember) => {
-    if (!currentUserId) return;
+  const handleJoinConfirm = async () => {
+    if (!previewCode || !joinPreview) {
+      setJoinError('Please enter a valid invite code.');
+      return;
+    }
 
-    setSelectedMemberId(member.id);
-    setHealthError(null);
+    setIsJoining(true);
+    setJoinError(null);
 
-    if (healthByMember[member.id]) return;
+    const capacity = await fetchFamilyCapacity(joinPreview.family_id);
+    if (!capacity) {
+      setJoinError('Unable to verify family capacity. Please try again.');
+      setIsJoining(false);
+      return;
+    }
+    if (capacity.isFull) {
+      setJoinError(`This family already has ${capacity.limit} members. You cannot join at this time.`);
+      setIsJoining(false);
+      return;
+    }
 
-    setHealthLoading(member.id);
-    try {
-      const response = await fetch(`/api/family/health?memberId=${member.id}`, {
-        cache: 'no-store',
-      });
+    const { data, error } = await supabase.rpc('request_join_family', {
+      invite_code: previewCode,
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        setHealthError(errorText || 'Unable to load health record.');
-        setHealthByMember((prev) => ({ ...prev, [member.id]: null }));
-        return;
+    if (error) {
+      const message = (error.message || '').toLowerCase();
+      if (message.includes('not_authenticated')) {
+        setJoinError('Please sign in to continue.');
+      } else if (message.includes('invalid_code')) {
+        setJoinError('Invalid code.');
+      } else if (message.includes('already_in_family') || error.code === '23505') {
+        setJoinError('You are already part of a family.');
+      } else if (message.includes('request_exists') || message.includes('pending_request')) {
+        setJoinError('You already have a pending join request.');
+      } else {
+        setJoinError('Unable to send your request. Please try again.');
       }
-
-      const data: HealthRecord | null = await response.json();
-      setHealthByMember((prev) => ({ ...prev, [member.id]: data }));
-    } catch (error) {
-      console.error('Failed to fetch health record', error);
-      setHealthError('Unable to load health record.');
-    } finally {
-      setHealthLoading(null);
+      setIsJoining(false);
+      return;
     }
+
+    const row = readRpcRow<RequestJoinResult>(
+      data as RequestJoinResult[] | RequestJoinResult | null
+    );
+    if (!row) {
+      setJoinError('Unable to send your request. Please try again.');
+      setIsJoining(false);
+      return;
+    }
+
+    setPendingJoinFamily(row.name);
+    setPendingRequest({
+      id: 'pending',
+      family_id: row.family_id,
+      family_name: row.name,
+    });
+    lastFamilyActionRef.current = Date.now();
+    setIsJoining(false);
+    closeJoinModal();
+    await loadPendingRequest(userId);
   };
 
-  const activeMembers = useMemo(
-    () => familyData.members,
-    [familyData.members]
-  );
+  const handleReviewRequest = async (requestId: string, approve: boolean) => {
+    if (!family || family.role !== 'owner') return;
+    if (approve && isFamilyAtCapacity) {
+      setJoinRequestsError(`Family already has ${FAMILY_MEMBER_LIMIT} members.`);
+      return;
+    }
 
-  const hasPendingIncomingInvite = familyData.incomingInvite?.status === 'pending';
-  const hasMyPendingInvites = pendingInvites.length > 0;
-  const selectedMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
-  const selectedHealth = selectedMember ? healthByMember[selectedMember.id] : null;
+    setJoinRequestsError(null);
+
+    const { error } = await supabase.rpc('review_join_request', {
+      request_id: requestId,
+      approve,
+    });
+
+    if (error) {
+      setJoinRequestsError(
+        error.message ? `Unable to update request: ${error.message}` : 'Unable to update request.'
+      );
+      return;
+    }
+
+    await loadJoinRequests(family.id);
+    await loadMembers(family.id);
+  };
 
   return (
-    <div className="min-h-screen bg-[#f4f7f8]">
-      <main className="max-w-6xl mx-auto px-6 py-10 space-y-6">
-        {/* Error Alert */}
-        {loadError && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
-            <p className="text-rose-600 text-sm">{loadError}</p>
+    <div className="min-h-screen bg-white p-6 md:p-10">
+      <div className="mx-auto max-w-5xl space-y-6">
+        {family ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">
+                {family.name}&apos;s Family
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Managed by {members.find((m) => m.role === 'owner')?.name ?? 'Owner'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={openInviteModal}
+                disabled={family.role !== 'owner' || isFamilyAtCapacity}
+                title={
+                  family.role !== 'owner'
+                    ? 'Only the owner can invite members.'
+                    : isFamilyAtCapacity
+                    ? `Family limit of ${FAMILY_MEMBER_LIMIT} reached.`
+                    : undefined
+                }
+                className="inline-flex items-center justify-center rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 transition disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Invite Member
+              </button>
+              {family.role === 'owner' ? (
+                <button
+                  type="button"
+                  onClick={openJoinRequestsModal}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900 transition bg-white"
+                >
+                  Join Requests{joinRequests.length > 0 ? ` (${joinRequests.length})` : ''}
+                  {joinRequests.length > 0 ? (
+                    <span className="relative ml-2 inline-flex h-2.5 w-2.5 items-center justify-center">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400/70" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
+                    </span>
+                  ) : null}
+                </button>
+              ) : null}
+            </div>
           </div>
+        ) : (
+          <header className="space-y-1">
+            <h1 className="text-3xl font-semibold text-slate-900">Family</h1>
+            <p className="text-sm text-slate-500">
+              Create a family or join one to share care updates.
+            </p>
+          </header>
         )}
 
-        {/* Header */}
-        <section className="bg-white rounded-3xl border border-white/20 shadow-xl shadow-teal-900/10 p-6 md:p-8">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-teal-600 font-semibold">
-                Family
-              </p>
-              <h1 className="text-3xl md:text-4xl font-semibold text-slate-900 mt-2">
-                {familyData.familyName}
-              </h1>
-            </div>
-            {currentUserId && (
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsInviteOpen(true)}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-teal-600 text-white font-semibold shadow-md shadow-teal-900/20 hover:bg-teal-700 transition"
-                >
-                  <UserPlus className="h-5 w-5" />
-                  Invite member
-                </button>
-              </div>
-            )}
+        {pageMessage ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {pageMessage}
           </div>
-        </section>
+        ) : null}
 
-        {/* Two Column Layout */}
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Family Members */}
-          <section className="bg-white rounded-3xl border border-white/20 shadow-xl shadow-teal-900/10 p-6 md:p-8">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Family members</h2>
-              <p className="text-slate-500 text-sm">
-                Accepted members in your family and their relation to you.
-              </p>
-            </div>
+        {(pendingJoinFamily || pendingRequest) && !family ? (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Your request to join {(pendingRequest?.family_name ?? pendingJoinFamily) || 'this family'}
+            &apos;s Family has been sent.
+            You&apos;ll see the family once the owner approves it (requests expire after 24 hours).
+          </div>
+        ) : null}
 
-            <div className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-700">Members</h3>
-                  <span className="text-xs font-semibold text-slate-500">{activeMembers.length}</span>
+        {(!isAuthReady || (isLoading && !family)) ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-slate-600">
+            Loading your family…
+          </div>
+        ) : family ? (
+          <>
+            <div className="grid gap-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Family Members</h3>
+                    <p className="text-sm text-slate-500">
+                      Everyone currently in this family.
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-500">
+                    {members.length}
+                  </span>
                 </div>
-                <div className="mt-3 space-y-3">
-                  {activeMembers.length === 0 ? (
-                    <p className="text-sm text-slate-500">No accepted family members yet.</p>
-                  ) : (
-                    activeMembers.map((member) => {
-                      const isSelf = member.id === currentUserId;
-                      const relationValue = memberRelations[member.id] || '';
-                      return (
-                        <div
-                          key={member.id}
-                          className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 space-y-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="font-medium text-slate-900">
-                                {member.name} {isSelf && '(You)'}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                {isSelf ? 'This is you.' : 'Set how this person is related to you.'}
-                              </p>
-                            </div>
-                            {!isSelf && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemove(member.id)}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Remove
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-3">
-                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                              Relation
-                            </label>
-                            <select
-                              disabled={isSelf}
-                              value={relationValue}
-                              onChange={(event) => handleRelationChange(member.id, event.target.value)}
-                              className="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
-                            >
-                              <option value="">Select relation</option>
-                              {RELATION_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                            {savingRelations.has(member.id) && (
-                              <span className="text-xs text-slate-400">Saving…</span>
-                            )}
-                          </div>
-
-                          <div>
+                {membersLoading ? (
+                  <p className="mt-4 text-sm text-slate-500">Loading members…</p>
+                ) : membersError ? (
+                  <p className="mt-4 text-sm text-rose-600">{membersError}</p>
+                ) : members.length === 0 ? (
+                  <p className="mt-4 text-sm text-slate-500">
+                    No members yet. Invite someone to get started.
+                  </p>
+                ) : (
+                  <ul className="mt-4 space-y-3">
+                    {members.map((member) => (
+                      <li
+                        key={member.user_id}
+                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{member.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {member.role === 'owner' ? 'Owner' : 'Member'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {member.user_id !== userId ? (
                             <button
                               type="button"
-                              onClick={() => handleViewHealth(member)}
-                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              onClick={() => setSelectedMember(member)}
+                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition"
                             >
-                              <HeartPulse className="h-4 w-4" />
-                              View health record
+                              View
                             </button>
-                          </div>
+                          ) : null}
+                          {member.role === 'owner' ? (
+                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                              Owner
+                            </span>
+                          ) : null}
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
-          </section>
+          </>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-10 text-center">
+            <p className="text-slate-600 text-base">
+              You are not a part of any family, create one now or join a family.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 transition"
+              >
+                Create Your Family
+              </button>
+              <button
+                type="button"
+                onClick={openJoinModal}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900 transition"
+              >
+                Join a Family
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
-          {/* Family Health + Invites */}
-          <section className="space-y-6">
-            <div className="bg-white rounded-3xl border border-white/20 shadow-xl shadow-teal-900/10 p-6 md:p-8">
+      {isCreateOpen ? (
+        <Modal onClose={closeCreateModal}>
+          {createdFamily ? (
+            <div className="space-y-5">
               <div>
-                <h2 className="text-2xl font-semibold text-slate-900">Family health records</h2>
-                <p className="text-slate-500 text-sm">
-                  View health details for accepted family members.
+                <h2 className="text-xl font-semibold text-slate-900">Family created</h2>
+                <p className="text-sm text-slate-500">
+                  Share this invite code with the people you want to add.
                 </p>
               </div>
-
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
-                {selectedMember ? (
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-700">{selectedMember.name}</p>
-                      <p className="text-xs text-slate-500">Health record summary</p>
-                    </div>
-                    {healthLoading === selectedMember.id && (
-                      <p className="text-sm text-slate-500">Loading health data…</p>
-                    )}
-                    {healthError && (
-                      <p className="text-sm text-rose-600">{healthError}</p>
-                    )}
-                    {!healthLoading && selectedHealth && (
-                      <div className="grid gap-3 text-sm text-slate-700">
-                        <div className="flex flex-wrap gap-4">
-                          <span>
-                            <strong>Blood group:</strong> {selectedHealth.blood_group || '—'}
-                          </span>
-                          <span>
-                            <strong>Age:</strong> {selectedHealth.age ?? '—'}
-                          </span>
-                          <span>
-                            <strong>BMI:</strong> {selectedHealth.bmi ?? '—'}
-                          </span>
-                        </div>
-                        <div>
-                          <strong>Diagnosed conditions:</strong>{' '}
-                          {(selectedHealth.current_diagnosed_condition || []).join(', ') || '—'}
-                        </div>
-                        <div>
-                          <strong>Allergies:</strong> {(selectedHealth.allergies || []).join(', ') || '—'}
-                        </div>
-                        <div>
-                          <strong>Ongoing treatments:</strong>{' '}
-                          {(selectedHealth.ongoing_treatments || []).join(', ') || '—'}
-                        </div>
-                      </div>
-                    )}
-                    {!healthLoading && !selectedHealth && !healthError && (
-                      <p className="text-sm text-slate-500">No health data available.</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    Select a family member to view their health record.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-white/20 shadow-xl shadow-teal-900/10 p-6 md:p-8">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">Invites</h2>
-                <p className="text-slate-500 text-sm">Manage pending invites in your family.</p>
-              </div>
-              <div className="mt-6 space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMyPendingInvites(true);
-                      setShowIncomingPendingInvite(false);
-                    }}
-                    className="w-full flex items-center justify-between text-left rounded-xl px-2 py-2 -mx-2 transition hover:bg-slate-50"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Pending invites</p>
-                      <p className="text-xs text-slate-500">Tap to view pending invites</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {hasMyPendingInvites && (
-                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                          {pendingInvites.length}
-                        </span>
-                      )}
-                      <ChevronRight className="h-4 w-4 text-slate-400" />
-                    </div>
-                  </button>
-                </div>
-
-                {hasPendingIncomingInvite && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowIncomingPendingInvite(true);
-                        setShowMyPendingInvites(false);
-                      }}
-                      className="w-full flex items-center justify-between text-left rounded-xl px-2 py-2 -mx-2 transition hover:bg-amber-100/50"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-amber-900">New family invite</p>
-                        <p className="text-xs text-amber-700">You have a pending invitation</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                          1
-                        </span>
-                        <ChevronRight className="h-4 w-4 text-amber-600" />
-                      </div>
-                    </button>
-                  </div>
-                )}
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-700">Current family</h3>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {activeMembers.length <= 1 ? (
-                      <p className="text-sm text-slate-500">You are not part of any family yet.</p>
-                    ) : (
-                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                        <div>
-                          <span className="font-medium text-slate-900 block">
-                            {familyData.familyName}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {activeMembers.length} members
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleLeaveFamily}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                        >
-                          <LogOut className="h-4 w-4" />
-                          Leave
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </main>
-
-      {/* My Pending Invites Modal */}
-      {showMyPendingInvites && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Pending invites</h2>
-                <p className="text-xs text-slate-500">Invites you&apos;ve sent</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMyPendingInvites(false)}
-                className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
-                aria-label="Close pending invites"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-4 space-y-2">
-              {pendingInvites.length === 0 ? (
-                <p className="text-sm text-slate-500">There are no pending invites.</p>
-              ) : (
-                pendingInvites.map((invite) => (
-                  <div
-                    key={invite.id}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
-                  >
-                    <span>{invite.contact}</span>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-amber-600">
-                      Pending
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Incoming Pending Invite Modal */}
-      {showIncomingPendingInvite && familyData.incomingInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Family invitation</h2>
-                <p className="text-xs text-slate-500">You&apos;ve been invited to join a family</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowIncomingPendingInvite(false)}
-                className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
-                aria-label="Close invite"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-4">
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {familyData.incomingInvite.name}&apos;s Family
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Invited by {familyData.incomingInvite.name}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleAcceptFamilyInvite}
-                    className="inline-flex items-center justify-center rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
-                  >
-                    Accept invitation
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeclineFamilyInvite}
-                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Invite Modal */}
-      {isInviteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">Invite to your family</h2>
-              <button
-                type="button"
-                onClick={() => setIsInviteOpen(false)}
-                className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
-                aria-label="Close invite modal"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="mt-2 text-sm text-slate-500">
-              Add a registered user by entering their phone number.
-            </p>
-            <form onSubmit={handleInviteSubmit} className="mt-4 space-y-4">
-              <label className="block text-sm font-medium text-slate-700">
-                Phone number
-                <input
-                  value={inviteContact}
-                  onChange={(e) => setInviteContact(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </label>
-              {inviteError && <p className="text-sm text-rose-600">{inviteError}</p>}
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between gap-3">
+                <span className="font-mono text-lg tracking-[0.3em] text-slate-800">
+                  {createdInviteCode ?? '—'}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setIsInviteOpen(false)}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  onClick={() => createdInviteCode && handleCopy(createdInviteCode)}
+                  disabled={!createdInviteCode}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Copy
+                </button>
+              </div>
+              {createError ? (
+                <p className="text-sm text-rose-600">{createError}</p>
+              ) : null}
+              {inviteMessage ? (
+                <p className="text-xs text-slate-500">{inviteMessage}</p>
+              ) : null}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Create your family</h2>
+                <p className="text-sm text-slate-500">You can create a single family only.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Family Name</label>
+                <input
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                  placeholder="e.g. The Johnsons"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+                />
+                <p className="text-xs text-slate-500">
+                  Pick a name between 2 and 50 characters.
+                </p>
+              </div>
+              {createError ? (
+                <p className="text-sm text-rose-600">{createError}</p>
+              ) : null}
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
                 >
                   Cancel
                 </button>
                 <button
-                  type="submit"
-                  disabled={isSavingInvite}
-                  className="inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={isCreating}
+                  className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {isSavingInvite ? 'Sending…' : 'Send invite'}
+                  {isCreating ? 'Creating…' : 'Create'}
                 </button>
               </div>
-            </form>
+            </div>
+          )}
+        </Modal>
+      ) : null}
+
+      {isJoinOpen ? (
+        <Modal onClose={closeJoinModal}>
+          {!joinPreview ? (
+            <div className="space-y-5">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Join a family</h2>
+                <p className="text-sm text-slate-500">Enter your unique family invite code.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Unique Family Code</label>
+                <input
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value)}
+                  placeholder="ENTER CODE"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 uppercase tracking-widest outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+                />
+                <p className="text-xs text-slate-500">Codes are 6–12 characters.</p>
+              </div>
+              {joinError ? <p className="text-sm text-rose-600">{joinError}</p> : null}
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeJoinModal}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleJoinPreview}
+                  disabled={isJoining}
+                  className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isJoining ? 'Checking…' : 'Continue'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Confirm join</h2>
+                <p className="text-sm text-slate-500">
+                  You are about to request to join {joinPreview.name}&apos;s Family.
+                </p>
+              </div>
+              {joinError ? <p className="text-sm text-rose-600">{joinError}</p> : null}
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJoinPreview(null);
+                    setPreviewCode(null);
+                    setJoinError(null);
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleJoinConfirm}
+                  disabled={isJoining}
+                  className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isJoining ? 'Sending…' : 'Send Request'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      ) : null}
+
+      {isInviteOpen && family ? (
+        <Modal onClose={closeInviteModal}>
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Invite member</h2>
+              <p className="text-sm text-slate-500">
+                Share this invite code to add a family member.
+              </p>
+            </div>
+            {isInviteLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                Generating a fresh invite code…
+              </div>
+            ) : inviteCode ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between gap-3">
+                <span className="font-mono text-lg tracking-[0.3em] text-slate-800">
+                  {inviteCode}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(inviteCode)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300"
+                >
+                  Copy
+                </button>
+              </div>
+            ) : inviteError ? null : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                No active invite code is available right now.
+              </div>
+            )}
+            {inviteError ? (
+              <p className="text-sm text-rose-600">{inviteError}</p>
+            ) : null}
+            {inviteMessage ? (
+              <p className="text-xs text-slate-500">{inviteMessage}</p>
+            ) : null}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={closeInviteModal}
+                className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+              >
+                Done
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        </Modal>
+      ) : null}
+
+      {isJoinRequestsOpen && family ? (
+        <Modal onClose={closeJoinRequestsModal}>
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Join Requests</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Approve or reject new members. Requests expire after 24 hours.
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-slate-500">
+                {joinRequests.length}
+              </span>
+            </div>
+            {joinRequestsLoading ? (
+              <p className="text-sm text-slate-500">Loading requests…</p>
+            ) : joinRequestsError ? (
+              <p className="text-sm text-rose-600">{joinRequestsError}</p>
+            ) : joinRequests.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No pending requests right now.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {joinRequests.map((request) => (
+                  <li
+                    key={request.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {request.display_name}
+                      </p>
+                      <p className="text-xs text-slate-500">Wants to join</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleReviewRequest(request.id, true)}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReviewRequest(request.id, false)}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Modal>
+      ) : null}
+
+      {selectedMember ? (
+        <Modal onClose={closeMemberDetailsModal} className="max-w-3xl h-[85vh] overflow-hidden flex flex-col min-h-0">
+          <div className="flex flex-col flex-1 min-h-0 pt-1">
+            <h2 className="text-xl font-semibold text-slate-900 pr-8 shrink-0">
+              {selectedMember.name}&apos;s Details
+            </h2>
+
+            <div className="flex rounded-xl border border-slate-200 p-1.5 bg-slate-100/80 shrink-0 mt-4">
+              {(['personal', 'appointments', 'medications'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setMemberDetailsTab(tab)}
+                  className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 active:scale-[0.98] ${
+                    memberDetailsTab === tab
+                      ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/60'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  {tab === 'personal' ? 'Personal' : tab === 'appointments' ? 'Appointments' : 'Medications'}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 min-h-[280px] flex-1 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 shadow-inner">
+              {memberDetailsLoading ? (
+                <div className="h-full min-h-[280px] flex items-center justify-center text-slate-500 text-sm">
+                  Loading details…
+                </div>
+              ) : memberDetailsError ? (
+                <div className="h-full min-h-[280px] flex items-center justify-center px-4">
+                  <p className="text-sm text-rose-600">{memberDetailsError}</p>
+                </div>
+              ) : memberDetailsTab === 'personal' && memberDetails ? (
+              <div className="p-4 space-y-4">
+                <dl className="grid gap-3 text-sm">
+                  <div>
+                    <dt className="text-slate-500 font-medium">Name</dt>
+                    <dd className="text-slate-900 mt-0.5">{memberDetails.personal?.display_name?.trim() || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500 font-medium">Number</dt>
+                    <dd className="text-slate-900 mt-0.5">{memberDetails.personal?.phone?.trim() || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500 font-medium">Age</dt>
+                    <dd className="text-slate-900 mt-0.5">{memberDetails.health?.age != null ? String(memberDetails.health.age) : '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500 font-medium">Blood Group</dt>
+                    <dd className="text-slate-900 mt-0.5">{memberDetails.health?.blood_group?.trim() || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500 font-medium">BMI</dt>
+                    <dd className="text-slate-900 mt-0.5">{memberDetails.health?.bmi != null ? String(memberDetails.health.bmi) : '—'}</dd>
+                  </div>
+                </dl>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Current medical status</h3>
+                  <div className="space-y-2 text-sm">
+                    {memberDetails.health?.current_diagnosed_condition?.length ? (
+                      <p><span className="text-slate-500">Conditions:</span> {memberDetails.health.current_diagnosed_condition.join(', ')}</p>
+                    ) : null}
+                    {memberDetails.health?.allergies?.length ? (
+                      <p><span className="text-slate-500">Allergies:</span> {memberDetails.health.allergies.join(', ')}</p>
+                    ) : null}
+                    {memberDetails.health?.ongoing_treatments?.length ? (
+                      <p><span className="text-slate-500">Ongoing treatments:</span> {memberDetails.health.ongoing_treatments.join(', ')}</p>
+                    ) : null}
+                    {!(memberDetails.health?.current_diagnosed_condition?.length || memberDetails.health?.allergies?.length || memberDetails.health?.ongoing_treatments?.length) && (
+                      <p className="text-slate-500">No current medical status recorded.</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Past medical history</h3>
+                  <div className="space-y-2 text-sm">
+                    {memberDetails.health?.previous_diagnosed_conditions?.length ? (
+                      <p><span className="text-slate-500">Previous conditions:</span> {memberDetails.health.previous_diagnosed_conditions.join(', ')}</p>
+                    ) : null}
+                    {memberDetails.health?.past_surgeries?.length ? (
+                      <p><span className="text-slate-500">Past surgeries:</span> {memberDetails.health.past_surgeries.map((s) => `${s.name} (${s.month}/${s.year})`).join(', ')}</p>
+                    ) : null}
+                    {memberDetails.health?.childhood_illness?.length ? (
+                      <p><span className="text-slate-500">Childhood illness:</span> {memberDetails.health.childhood_illness.join(', ')}</p>
+                    ) : null}
+                    {memberDetails.health?.long_term_treatments?.length ? (
+                      <p><span className="text-slate-500">Long-term treatments:</span> {memberDetails.health.long_term_treatments.join(', ')}</p>
+                    ) : null}
+                    {!(memberDetails.health?.previous_diagnosed_conditions?.length || memberDetails.health?.past_surgeries?.length || memberDetails.health?.childhood_illness?.length || memberDetails.health?.long_term_treatments?.length) && (
+                      <p className="text-slate-500">No past medical history recorded.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : memberDetailsTab === 'appointments' && memberDetails ? (
+              <div className="p-4 space-y-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Past appointments (last 7 days)</h3>
+                  {(() => {
+                    const now = new Date();
+                    const today = formatLocalDate(now);
+                    const pastCutoff = new Date(now);
+                    pastCutoff.setDate(pastCutoff.getDate() - 7);
+                    const pastCutoffStr = formatLocalDate(pastCutoff);
+                    const past = (memberDetails.appointments || []).filter(
+                      (a) => {
+                        const dateKey = normalizeAppointmentDate(a.date);
+                        return dateKey && dateKey >= pastCutoffStr && dateKey <= today;
+                      }
+                    );
+                    past.sort((a, b) => {
+                      const dateA = normalizeAppointmentDate(a.date);
+                      const dateB = normalizeAppointmentDate(b.date);
+                      if (!dateA && !dateB) return 0;
+                      if (!dateA) return 1;
+                      if (!dateB) return -1;
+                      return dateA === dateB ? (a.time || '').localeCompare(b.time || '') : dateA.localeCompare(dateB);
+                    });
+                    if (past.length === 0) {
+                      return <p className="text-sm text-slate-500">No past appointments in the last 7 days.</p>;
+                    }
+                    return (
+                      <ul className="space-y-2">
+                        {past.map((apt) => (
+                          <li key={apt.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <span className="font-medium text-slate-800">{apt.title}</span>
+                            <span className="text-slate-500 mx-2">·</span>
+                            <span>{normalizeAppointmentDate(apt.date) || apt.date || '—'}</span>
+                            <span className="text-slate-500 mx-2">·</span>
+                            <span>{apt.time || '—'}</span>
+                            {apt.type ? <span className="text-slate-500 ml-2">({apt.type})</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Upcoming appointments (next 7 days)</h3>
+                  {(() => {
+                    const now = new Date();
+                    const today = formatLocalDate(now);
+                    const futureCutoff = new Date(now);
+                    futureCutoff.setDate(futureCutoff.getDate() + 7);
+                    const futureCutoffStr = formatLocalDate(futureCutoff);
+                    const upcoming = (memberDetails.appointments || []).filter(
+                      (a) => {
+                        const dateKey = normalizeAppointmentDate(a.date);
+                        return dateKey && dateKey > today && dateKey <= futureCutoffStr;
+                      }
+                    );
+                    upcoming.sort((a, b) => {
+                      const dateA = normalizeAppointmentDate(a.date);
+                      const dateB = normalizeAppointmentDate(b.date);
+                      if (!dateA && !dateB) return 0;
+                      if (!dateA) return 1;
+                      if (!dateB) return -1;
+                      return dateA === dateB ? (a.time || '').localeCompare(b.time || '') : dateA.localeCompare(dateB);
+                    });
+                    if (upcoming.length === 0) {
+                      return <p className="text-sm text-slate-500">No upcoming appointments in the next 7 days.</p>;
+                    }
+                    return (
+                      <ul className="space-y-2">
+                        {upcoming.map((apt) => (
+                          <li key={apt.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <span className="font-medium text-slate-800">{apt.title}</span>
+                            <span className="text-slate-500 mx-2">·</span>
+                            <span>{normalizeAppointmentDate(apt.date) || apt.date || '—'}</span>
+                            <span className="text-slate-500 mx-2">·</span>
+                            <span>{apt.time || '—'}</span>
+                            {apt.type ? <span className="text-slate-500 ml-2">({apt.type})</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : memberDetailsTab === 'medications' && memberDetails ? (
+              <div className="p-4">
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Ongoing medications</h3>
+                {(() => {
+                  const now = new Date();
+                  const ongoing = (memberDetails.medications || []).filter((med) => {
+                    if (!med.endDate) return true;
+                    const end = new Date(med.endDate);
+                    if (Number.isNaN(end.getTime())) return true;
+                    return now <= end;
+                  });
+                  if (ongoing.length === 0) {
+                    return <p className="text-sm text-slate-500">No ongoing medications.</p>;
+                  }
+                  return (
+                    <ul className="space-y-3">
+                      {ongoing.map((med) => (
+                        <li key={med.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                          <p className="font-semibold text-slate-800">{med.name}</p>
+                          <p className="text-slate-600 mt-1">Dosage: {med.dosage || '—'}</p>
+                          <p className="text-slate-600">Frequency: {med.frequency || '—'}</p>
+                          {med.purpose ? <p className="text-slate-500 mt-1">Purpose: {med.purpose}</p> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
+              </div>
+            ) : null}
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

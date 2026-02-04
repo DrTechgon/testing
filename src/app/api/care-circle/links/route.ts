@@ -12,8 +12,32 @@ const getDisplayName = (displayName: string | null, phone: string | null) => {
   return phoneValue || 'Unknown member';
 };
 
-export async function GET() {
-  const cookieStore = await cookies();
+export async function GET(request: Request) {
+  // Check for Bearer token in Authorization header (for mobile apps)
+  const authHeader = request.headers.get('authorization');
+  let user: { id: string } | null = null;
+
+  if (authHeader?.startsWith('Bearer ')) {
+    // Mobile app authentication via Bearer token
+    const token = authHeader.replace('Bearer ', '');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      }
+    );
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+    if (!authError && authUser) {
+      user = authUser;
+    }
+  } else {
+    // Web app authentication via cookies
+    const cookieStore = await cookies();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,12 +56,13 @@ export async function GET() {
     }
   );
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    if (!authError && authUser) {
+      user = authUser;
+    }
+  }
 
-  if (authError || !user) {
+  if (!user) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 
@@ -58,7 +83,7 @@ export async function GET() {
 
   const { data: links, error: linksError } = await adminClient
     .from('care_circle_links')
-    .select('id, requester_id, recipient_id, status, created_at')
+    .select('id, requester_id, recipient_id, status, created_at, updated_at')
     .or(`requester_id.eq.${user.id},recipient_id.eq.${user.id}`);
 
   if (linksError) {
@@ -98,6 +123,7 @@ export async function GET() {
         personalLookup[link.recipient_id]?.phone ?? null
       ),
       createdAt: link.created_at,
+      updatedAt: link.updated_at,
     }));
 
   const incoming = (links ?? [])
@@ -111,6 +137,7 @@ export async function GET() {
         personalLookup[link.requester_id]?.phone ?? null
       ),
       createdAt: link.created_at,
+      updatedAt: link.updated_at,
     }));
 
   return NextResponse.json({ outgoing, incoming });

@@ -252,16 +252,30 @@ export default function HealthOnboardingChatbot() {
     items.map((item) => [item.name, item.dosage, item.frequency].filter(Boolean).join(" - ")).join(", ");
 
   const handleMedicationNext = () => {
-    const cleaned = profile.currentMedication
+    const normalized = profile.currentMedication
       .map((item) => ({
         name: item.name.trim(),
         dosage: item.dosage.trim(),
         frequency: item.frequency.trim(),
       }))
-      .filter((item) => item.name);
+      .filter((item) => item.name || item.dosage || item.frequency);
 
-    setProfile((prev) => ({ ...prev, currentMedication: cleaned }));
-    advanceStep(cleaned.length ? formatMedicationSummary(cleaned) : "None");
+    if (!normalized.length) {
+      setProfile((prev) => ({ ...prev, currentMedication: [] }));
+      advanceStep("None");
+      return;
+    }
+
+    const hasIncomplete = normalized.some(
+      (item) => !item.name || !item.dosage || !item.frequency
+    );
+    if (hasIncomplete) {
+      addMessage("bot", "⚠️ Please enter name, dosage, and frequency for each medication.");
+      return;
+    }
+
+    setProfile((prev) => ({ ...prev, currentMedication: normalized }));
+    advanceStep(formatMedicationSummary(normalized));
   };
 
   const handleSurgeryNext = () => {
@@ -339,7 +353,7 @@ export default function HealthOnboardingChatbot() {
             dosage: item.dosage.trim(),
             frequency: item.frequency.trim(),
           }))
-          .filter((item) => item.name),
+          .filter((item) => item.name && item.dosage && item.frequency),
         previousDiagnosedConditions: sanitizeTextList(profile.previousDiagnosedConditions),
         pastSurgeries: profile.pastSurgeries.filter((item) => item.name && item.month && item.year),
         childhoodIllness: sanitizeTextList(profile.childhoodIllness),

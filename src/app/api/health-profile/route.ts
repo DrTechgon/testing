@@ -1,7 +1,10 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/server";
 
 type ProfilePayload = {
+  displayName?: string;
   dateOfBirth: string; // YYYY-MM-DD
   bloodGroup: string;
   heightCm: number | null;
@@ -56,7 +59,21 @@ export async function POST(req: Request) {
     const body = (await req.json()) as ProfilePayload;
 
     const supabase = await supabaseServer();
-    const { data, error } = await supabase.auth.getUser();
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: "Service role key is missing." }, { status: 500 });
+    }
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } }
+    );
+    const authHeader = req.headers.get("authorization") || "";
+    const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : null;
+    const { data, error } = bearerToken
+      ? await supabase.auth.getUser(bearerToken)
+      : await supabase.auth.getUser();
 
     if (error || !data?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -86,11 +103,11 @@ export async function POST(req: Request) {
     const currentMedication = Array.isArray(body.currentMedication)
       ? body.currentMedication
           .map((item) => ({
-            name: item.name?.trim(),
+            name: item.name?.trim() || "",
             dosage: item.dosage?.trim() || "",
             frequency: item.frequency?.trim() || "",
           }))
-          .filter((item) => item.name)
+          .filter((item) => item.name && item.dosage && item.frequency)
       : [];
 
     const pastSurgeries = Array.isArray(body.pastSurgeries)
@@ -128,12 +145,50 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: upsertErr } = await supabase
+    const { error: upsertErr } = await adminClient
       .from("health")
       .upsert(payload, { onConflict: "user_id" });
 
     if (upsertErr) {
       return NextResponse.json({ error: upsertErr.message }, { status: 400 });
+    }
+
+    const personalPayload = body.displayName?.trim()
+      ? { id: data.user.id, display_name: body.displayName.trim(), updated_at: new Date().toISOString() }
+      : null;
+
+    const medicationStartDate = new Date().toISOString().split("T")[0];
+    const medicationsForUser = currentMedication.map((item) => ({
+      id: randomUUID(),
+      name: item.name,
+      dosage: item.dosage,
+      purpose: "",
+      frequency: item.frequency,
+      timesPerDay: 1,
+      startDate: medicationStartDate,
+      logs: [],
+    }));
+
+    const medicationPayload = {
+      user_id: data.user.id,
+      medications: medicationsForUser,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (personalPayload) {
+      const { error: personalErr } = await adminClient
+        .from("personal")
+        .upsert(personalPayload, { onConflict: "id" });
+      if (personalErr) {
+        return NextResponse.json({ error: personalErr.message }, { status: 400 });
+      }
+    }
+
+    const { error: medicationErr } = await adminClient
+      .from("user_medications")
+      .upsert(medicationPayload, { onConflict: "user_id" });
+    if (medicationErr) {
+      return NextResponse.json({ error: medicationErr.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true });
