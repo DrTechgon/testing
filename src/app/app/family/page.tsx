@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { supabase } from '@/lib/createClient';
 
@@ -107,6 +108,15 @@ type MemberDetailsMedication = {
   endDate?: string;
 };
 
+type VaultCategory = 'all' | 'reports' | 'prescriptions' | 'insurance' | 'bills';
+
+type MemberVaultFile = {
+  name: string;
+  created_at: string | null;
+  folder: Exclude<VaultCategory, 'all'>;
+  url: string | null;
+};
+
 type MemberDetailsPayload = {
   personal: MemberDetailsPersonal;
   health: MemberDetailsHealth;
@@ -148,6 +158,44 @@ const normalizeAppointmentDate = (value: string | null | undefined) => {
   if (Number.isNaN(parsed.getTime())) return '';
   return formatLocalDate(parsed);
 };
+
+const formatVaultDate = (value: string | null) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const vaultCategoryLabels: Record<VaultCategory, string> = {
+  all: 'All',
+  reports: 'Lab Reports',
+  prescriptions: 'Prescriptions',
+  insurance: 'Insurance',
+  bills: 'Bills',
+};
+
+const vaultFileExtension = (name: string) => name.split('.').pop()?.toLowerCase();
+const isVaultImageFile = (name: string) => {
+  const ext = vaultFileExtension(name);
+  return (
+    ext === 'png' ||
+    ext === 'jpg' ||
+    ext === 'jpeg' ||
+    ext === 'gif' ||
+    ext === 'webp' ||
+    ext === 'bmp' ||
+    ext === 'svg' ||
+    ext === 'tif' ||
+    ext === 'tiff' ||
+    ext === 'heic' ||
+    ext === 'heif'
+  );
+};
+const isVaultPdfFile = (name: string) => vaultFileExtension(name) === 'pdf';
 
 export default function FamilyPage() {
   const [userId, setUserId] = useState('');
@@ -192,7 +240,15 @@ export default function FamilyPage() {
   const [memberDetails, setMemberDetails] = useState<MemberDetailsPayload | null>(null);
   const [memberDetailsLoading, setMemberDetailsLoading] = useState(false);
   const [memberDetailsError, setMemberDetailsError] = useState<string | null>(null);
-  const [memberDetailsTab, setMemberDetailsTab] = useState<'personal' | 'appointments' | 'medications'>('personal');
+  const [memberDetailsTab, setMemberDetailsTab] = useState<'personal' | 'appointments' | 'medications' | 'vault'>('personal');
+  const [vaultCategory, setVaultCategory] = useState<VaultCategory>('all');
+  const [vaultFiles, setVaultFiles] = useState<MemberVaultFile[]>([]);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [vaultSearchQuery, setVaultSearchQuery] = useState('');
+  const [vaultPreviewFile, setVaultPreviewFile] = useState<MemberVaultFile | null>(null);
+  const [vaultPreviewUrl, setVaultPreviewUrl] = useState<string | null>(null);
+  const [vaultPreviewLoading, setVaultPreviewLoading] = useState(false);
 
   const isFamilyAtCapacity = !!family && members.length >= FAMILY_MEMBER_LIMIT;
 
@@ -448,6 +504,14 @@ export default function FamilyPage() {
       setMemberDetails(null);
       setMemberDetailsError(null);
       setMemberDetailsTab('personal');
+      setVaultCategory('all');
+      setVaultFiles([]);
+      setVaultError(null);
+      setVaultLoading(false);
+      setVaultSearchQuery('');
+      setVaultPreviewFile(null);
+      setVaultPreviewUrl(null);
+      setVaultPreviewLoading(false);
       return;
     }
     let cancelled = false;
@@ -489,6 +553,14 @@ export default function FamilyPage() {
     setMemberDetails(null);
     setMemberDetailsError(null);
     setMemberDetailsTab('personal');
+    setVaultCategory('all');
+    setVaultFiles([]);
+    setVaultError(null);
+    setVaultLoading(false);
+    setVaultSearchQuery('');
+    setVaultPreviewFile(null);
+    setVaultPreviewUrl(null);
+    setVaultPreviewLoading(false);
   };
 
   const openCreateModal = () => {
@@ -641,6 +713,61 @@ export default function FamilyPage() {
       return null;
     }
   }, []);
+
+  const fetchVaultFiles = useCallback(async (memberId: string, category: VaultCategory) => {
+    setVaultLoading(true);
+    setVaultError(null);
+    try {
+      const res = await fetch(
+        `/api/family/member/vault?memberId=${encodeURIComponent(memberId)}&category=${encodeURIComponent(
+          category
+        )}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message ?? 'Failed to load vault files.');
+      }
+      const data = (await res.json()) as { files?: MemberVaultFile[] };
+      setVaultFiles(Array.isArray(data.files) ? data.files : []);
+    } catch (err) {
+      setVaultFiles([]);
+      setVaultError(err instanceof Error ? err.message : 'Failed to load vault files.');
+    } finally {
+      setVaultLoading(false);
+    }
+  }, []);
+
+  const handleVaultPreview = useCallback(
+    async (file: MemberVaultFile) => {
+      if (!selectedMember) return;
+      setVaultPreviewFile(file);
+      setVaultPreviewLoading(true);
+      setVaultPreviewUrl(null);
+      try {
+        const res = await fetch(
+          `/api/family/member/vault/signed?memberId=${encodeURIComponent(
+            selectedMember.user_id
+          )}&folder=${encodeURIComponent(file.folder)}&name=${encodeURIComponent(file.name)}`
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.message ?? 'Unable to load preview.');
+        }
+        const data = (await res.json()) as { url?: string };
+        setVaultPreviewUrl(data.url ?? null);
+      } catch {
+        setVaultPreviewUrl(null);
+      } finally {
+        setVaultPreviewLoading(false);
+      }
+    },
+    [selectedMember]
+  );
+
+  useEffect(() => {
+    if (!selectedMember || memberDetailsTab !== 'vault') return;
+    fetchVaultFiles(selectedMember.user_id, vaultCategory);
+  }, [fetchVaultFiles, memberDetailsTab, selectedMember, vaultCategory]);
 
   const handleCreate = async () => {
     if (!userId) {
@@ -1335,7 +1462,7 @@ export default function FamilyPage() {
             </h2>
 
             <div className="flex rounded-xl border border-slate-200 p-1.5 bg-slate-100/80 shrink-0 mt-4">
-              {(['personal', 'appointments', 'medications'] as const).map((tab) => (
+              {(['personal', 'appointments', 'medications', 'vault'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -1346,13 +1473,89 @@ export default function FamilyPage() {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  {tab === 'personal' ? 'Personal' : tab === 'appointments' ? 'Appointments' : 'Medications'}
+                  {tab === 'personal'
+                    ? 'Personal'
+                    : tab === 'appointments'
+                    ? 'Appointments'
+                    : tab === 'medications'
+                    ? 'Medications'
+                    : 'Vault'}
                 </button>
               ))}
             </div>
 
             <div className="mt-4 min-h-[280px] flex-1 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 shadow-inner">
-              {memberDetailsLoading ? (
+              {memberDetailsTab === 'vault' ? (
+                <div className="p-4 space-y-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(['all', 'reports', 'prescriptions', 'insurance', 'bills'] as const).map(
+                        (category) => (
+                          <button
+                            key={category}
+                            type="button"
+                            onClick={() => setVaultCategory(category)}
+                            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                              vaultCategory === category
+                                ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/60'
+                                : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                            }`}
+                          >
+                            {vaultCategoryLabels[category]}
+                          </button>
+                        )
+                      )}
+                    </div>
+                    <div className="ml-auto w-full sm:w-56">
+                      <input
+                        type="text"
+                        value={vaultSearchQuery}
+                        onChange={(event) => setVaultSearchQuery(event.target.value)}
+                        placeholder="Search files"
+                        className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      />
+                    </div>
+                  </div>
+                  {vaultLoading ? (
+                    <p className="text-sm text-slate-500">Loading vault files…</p>
+                  ) : vaultError ? (
+                    <p className="text-sm text-rose-600">{vaultError}</p>
+                  ) : vaultFiles.filter((file) =>
+                      file.name.toLowerCase().includes(vaultSearchQuery.trim().toLowerCase())
+                    ).length === 0 ? (
+                    <p className="text-sm text-slate-500">No files in this vault.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {vaultFiles
+                        .filter((file) =>
+                          file.name
+                            .toLowerCase()
+                            .includes(vaultSearchQuery.trim().toLowerCase())
+                        )
+                        .map((file) => (
+                        <li
+                          key={`${file.folder}:${file.name}`}
+                          className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <p className="font-medium text-slate-800">{file.name}</p>
+                            <p className="text-xs text-slate-500">
+                              {vaultCategoryLabels[file.folder]} · {formatVaultDate(file.created_at)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleVaultPreview(file)}
+                            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Open
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : memberDetailsLoading ? (
                 <div className="h-full min-h-[280px] flex items-center justify-center text-slate-500 text-sm">
                   Loading details…
                 </div>
@@ -1539,6 +1742,66 @@ export default function FamilyPage() {
             </div>
           </div>
         </Modal>
+      ) : null}
+
+      {vaultPreviewFile ? (
+        <div className="fixed inset-0 z-[70] bg-slate-900/70 backdrop-blur-sm">
+          <div className="absolute inset-4 md:inset-8 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">
+                  {vaultPreviewFile.name}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {vaultCategoryLabels[vaultPreviewFile.folder]}
+                </p>
+              </div>
+              <button
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                onClick={() => {
+                  setVaultPreviewFile(null);
+                  setVaultPreviewUrl(null);
+                }}
+                aria-label="Close preview"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 p-6 overflow-auto">
+              {vaultPreviewLoading && (
+                <div className="text-sm text-slate-500">Loading preview…</div>
+              )}
+              {!vaultPreviewLoading && vaultPreviewUrl && isVaultImageFile(vaultPreviewFile.name) && (
+                <div className="w-full h-full flex items-center justify-center">
+                  <img
+                    src={vaultPreviewUrl}
+                    alt={vaultPreviewFile.name}
+                    className="max-h-full max-w-full rounded-xl border border-slate-100"
+                  />
+                </div>
+              )}
+              {!vaultPreviewLoading && vaultPreviewUrl && isVaultPdfFile(vaultPreviewFile.name) && (
+                <iframe
+                  src={vaultPreviewUrl}
+                  title={vaultPreviewFile.name}
+                  className="w-full h-full rounded-xl border border-slate-100"
+                />
+              )}
+              {!vaultPreviewLoading &&
+                vaultPreviewUrl &&
+                !isVaultImageFile(vaultPreviewFile.name) &&
+                !isVaultPdfFile(vaultPreviewFile.name) && (
+                  <div className="text-sm text-slate-500">
+                    Preview not available for this file type.
+                  </div>
+                )}
+              {!vaultPreviewLoading && !vaultPreviewUrl && (
+                <div className="text-sm text-slate-500">Preview unavailable.</div>
+              )}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

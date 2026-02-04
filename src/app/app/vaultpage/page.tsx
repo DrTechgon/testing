@@ -841,15 +841,26 @@ export default function VaultPage() {
     setPreviewFile(file);
     setPreviewUrl(null);
     setPreviewLoading(true);
-    const { data, error } = await getSignedUrl(
-      `${userId}/${file.folder}/${file.name}`
-    );
-    setPreviewLoading(false);
-    if (error || !data?.signedUrl) {
-      alert(error?.message || "Failed to load preview.");
-      return;
+    try {
+      const res = await fetch(
+        `/api/vault/signed?folder=${encodeURIComponent(file.folder)}&name=${encodeURIComponent(
+          file.name
+        )}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message ?? "Failed to load preview.");
+      }
+      const data = (await res.json()) as { url?: string };
+      if (!data.url) {
+        throw new Error("Failed to load preview.");
+      }
+      setPreviewUrl(data.url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to load preview.");
+    } finally {
+      setPreviewLoading(false);
     }
-    setPreviewUrl(data.signedUrl);
   };
 
   const fileExtension = (name: string) => name.split(".").pop()?.toLowerCase();
