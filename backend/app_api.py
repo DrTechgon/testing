@@ -32,6 +32,7 @@ CORS(app, resources={
             "http://127.0.0.1:3000",
             "https://vytara-official.vercel.app",
             "https://*.vercel.app"
+            "https://sauncier-instigative-yolande.ngrok-free.dev"
         ],
         "methods": ["GET", "POST", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
