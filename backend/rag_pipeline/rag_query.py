@@ -178,7 +178,7 @@ DATES: {', '.join(report_dates) if report_dates else 'Not detected'}
 
 RULES:
 - Be factual and precise
-- Show trends ONLY if multiple reports of same type exist
+- Show trends ONLY if multiple reports of same type exist but if present focus more on trends
 - List key findings for different report types
 - Highlight abnormalities
 - Keep it brief and readable"""
