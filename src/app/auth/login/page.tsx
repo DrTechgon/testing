@@ -21,8 +21,8 @@ type RememberedAccount = {
   name: string;
   phone: string;
   deviceToken: string;
-  refreshToken: string;
   accessToken?: string;
+  expiresAt?: number;
 };
 
 const REMEMBERED_ACCOUNT_KEY = "vytara_remembered_account";
@@ -40,6 +40,7 @@ export default function LoginPage() {
   const [rememberedAccount, setRememberedAccount] =
     useState<RememberedAccount | null>(null);
   const [rememberMenuOpen, setRememberMenuOpen] = useState(false);
+  const [otpSessionId, setOtpSessionId] = useState("");
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
   const rememberMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -54,7 +55,7 @@ export default function LoginPage() {
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored) as RememberedAccount;
-    if (parsed?.refreshToken && parsed?.deviceToken) {
+    if (parsed?.accessToken && parsed?.deviceToken) {
       setRememberedAccount(parsed);
     }
     } catch {
@@ -110,7 +111,7 @@ export default function LoginPage() {
     setError("");
     setContinueLoading(true);
 
-    if (!rememberedAccount.refreshToken) {
+    if (!rememberedAccount.accessToken) {
       setContinueLoading(false);
       setError("Saved login expired. Please sign in again.");
       await removeRememberedAccount();
@@ -134,25 +135,11 @@ export default function LoginPage() {
       return;
     }
 
-    let sessionData = null;
-    let sessionError = null;
-
-    if (rememberedAccount.accessToken) {
-      const { data, error } = await supabase.auth.setSession({
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.setSession({
         access_token: rememberedAccount.accessToken,
-        refresh_token: rememberedAccount.refreshToken,
+        refresh_token: "no-refresh",
       });
-      sessionData = data;
-      sessionError = error;
-    }
-
-    if (sessionError || !sessionData?.session) {
-      const { data, error } = await supabase.auth.refreshSession({
-        refresh_token: rememberedAccount.refreshToken,
-      });
-      sessionData = data;
-      sessionError = error;
-    }
 
     setContinueLoading(false);
 
@@ -164,8 +151,7 @@ export default function LoginPage() {
 
     saveRememberedAccount({
       ...rememberedAccount,
-      refreshToken: sessionData.session.refresh_token,
-      accessToken: sessionData.session.access_token,
+      accessToken: rememberedAccount.accessToken,
     });
     router.push("/app/homepage");
   };
@@ -180,37 +166,30 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    const { data: existingUser, error: lookupError } = await supabase
-      .from("personal")
-      .select("id")
-      .eq("phone", formattedPhone)
-      .maybeSingle();
-
-    if (lookupError) {
-      console.warn("Phone lookup failed; proceeding with OTP.", lookupError);
-    } else if (!existingUser) {
-      setLoading(false);
-      setError("User not found. Please create an account first.");
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: formattedPhone,
-      options: { shouldCreateUser: false },
+    const response = await fetch("/api/auth/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: formattedPhone, mode: "login" }),
     });
 
     setLoading(false);
 
-    if (error) {
-      const lowerMessage = error.message.toLowerCase();
-      if (lowerMessage.includes("signups not allowed")) {
-        setError("User not found. Please create an account first.");
-      } else {
-        setError(error.message || "Failed to send OTP. Please check the number and try again.");
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      setError(
+        errorData?.message ||
+          "Failed to send OTP. Please check the number and try again."
+      );
       return;
     }
 
+    const responseData = await response.json().catch(() => null);
+    if (!responseData?.sessionId) {
+      setError("Failed to start OTP verification.");
+      return;
+    }
+
+    setOtpSessionId(responseData.sessionId);
     setStep("otp");
     setTimer(60);
   };
@@ -224,18 +203,45 @@ export default function LoginPage() {
       return;
     }
 
+    if (!otpSessionId) {
+      setError("Please request a new OTP.");
+      return;
+    }
+
     setLoading(true);
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone: formattedPhone,
-      token: otp,
-      type: "sms",
+    const response = await fetch("/api/auth/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: formattedPhone,
+        otp,
+        sessionId: otpSessionId,
+        mode: "login",
+      }),
     });
 
     setLoading(false);
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      setError(errorData?.message || "Invalid OTP. Please try again.");
+      return;
+    }
+
+    const responseData = await response.json().catch(() => null);
+    if (!responseData?.access_token || !responseData?.refresh_token) {
+      setError("Could not start session. Please try again.");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.setSession({
+      access_token: responseData.access_token,
+      refresh_token: responseData.refresh_token,
+    });
+
     if (error || !data?.user) {
-      setError(error?.message || "Invalid OTP. Please try again.");
+      setError(error?.message || "Could not start session.");
       return;
     }
 
@@ -253,20 +259,20 @@ export default function LoginPage() {
           action: "register",
           deviceToken,
           label: navigator.userAgent,
-          accessToken: data.session?.access_token ?? null,
+          accessToken: responseData.access_token ?? null,
         }),
       });
 
       if (!registerResponse.ok) {
         setError("Couldn't save this device. You can still log in.");
-      } else if (data.session?.refresh_token) {
+      } else {
         saveRememberedAccount({
           userId: data.user.id,
           name: displayName,
           phone,
           deviceToken,
-          refreshToken: data.session.refresh_token,
-          accessToken: data.session.access_token,
+          accessToken: responseData.access_token,
+          expiresAt: responseData.expires_at,
         });
       }
     }

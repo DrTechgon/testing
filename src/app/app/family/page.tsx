@@ -109,6 +109,11 @@ type MemberDetailsMedication = {
 };
 
 type VaultCategory = 'all' | 'reports' | 'prescriptions' | 'insurance' | 'bills';
+type MemberDetailsTab = 'personal' | 'appointments' | 'medications' | 'vault';
+type PendingMemberOpen = {
+  memberId: string;
+  tab: MemberDetailsTab;
+} | null;
 
 type MemberVaultFile = {
   name: string;
@@ -240,7 +245,7 @@ export default function FamilyPage() {
   const [memberDetails, setMemberDetails] = useState<MemberDetailsPayload | null>(null);
   const [memberDetailsLoading, setMemberDetailsLoading] = useState(false);
   const [memberDetailsError, setMemberDetailsError] = useState<string | null>(null);
-  const [memberDetailsTab, setMemberDetailsTab] = useState<'personal' | 'appointments' | 'medications' | 'vault'>('personal');
+  const [memberDetailsTab, setMemberDetailsTab] = useState<MemberDetailsTab>('personal');
   const [vaultCategory, setVaultCategory] = useState<VaultCategory>('all');
   const [vaultFiles, setVaultFiles] = useState<MemberVaultFile[]>([]);
   const [vaultLoading, setVaultLoading] = useState(false);
@@ -249,6 +254,8 @@ export default function FamilyPage() {
   const [vaultPreviewFile, setVaultPreviewFile] = useState<MemberVaultFile | null>(null);
   const [vaultPreviewUrl, setVaultPreviewUrl] = useState<string | null>(null);
   const [vaultPreviewLoading, setVaultPreviewLoading] = useState(false);
+  const [openJoinRequestsOnLoad, setOpenJoinRequestsOnLoad] = useState(false);
+  const [pendingMemberOpen, setPendingMemberOpen] = useState<PendingMemberOpen>(null);
 
   const isFamilyAtCapacity = !!family && members.length >= FAMILY_MEMBER_LIMIT;
 
@@ -471,6 +478,27 @@ export default function FamilyPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('open') === 'join-requests') {
+      setOpenJoinRequestsOnLoad(true);
+    }
+    const memberId = params.get('memberId');
+    const openTarget = params.get('open');
+    if (memberId && (openTarget === 'member-vault' || params.get('tab') === 'vault')) {
+      setPendingMemberOpen({ memberId, tab: 'vault' });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!openJoinRequestsOnLoad) return;
+    if (family?.role === 'owner') {
+      setIsJoinRequestsOpen(true);
+      setOpenJoinRequestsOnLoad(false);
+    }
+  }, [family?.role, openJoinRequestsOnLoad]);
+
+  useEffect(() => {
     if (!isAuthReady) return;
     loadFamily(userId);
     loadPendingRequest(userId);
@@ -483,6 +511,28 @@ export default function FamilyPage() {
     }
     loadMembers(family.id);
   }, [family?.id, loadMembers]);
+
+  useEffect(() => {
+    if (!pendingMemberOpen) return;
+    if (members.length === 0) {
+      if (!membersLoading) {
+        setPendingMemberOpen(null);
+      }
+      return;
+    }
+    const match = members.find((member) => member.user_id === pendingMemberOpen.memberId);
+    if (!match) {
+      setPendingMemberOpen(null);
+      return;
+    }
+    setSelectedMember(match);
+    setMemberDetailsTab(pendingMemberOpen.tab);
+    if (pendingMemberOpen.tab === 'vault') {
+      setVaultCategory('all');
+      setVaultSearchQuery('');
+    }
+    setPendingMemberOpen(null);
+  }, [members, membersLoading, pendingMemberOpen]);
 
   useEffect(() => {
     if (!family?.id || family.role !== 'owner') {

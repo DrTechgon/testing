@@ -13,8 +13,8 @@ type RememberedAccount = {
   name: string;
   phone: string;
   deviceToken: string;
-  refreshToken: string;
   accessToken?: string;
+  expiresAt?: number;
 };
 
 const REMEMBERED_ACCOUNT_KEY = "vytara_remembered_account";
@@ -29,6 +29,7 @@ export default function SignupPage() {
   const [rememberDevice, setRememberDevice] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [timer, setTimer] = useState(0);
+  const [otpSessionId, setOtpSessionId] = useState("");
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const fullPhone = `+91${phone}`;
@@ -63,39 +64,29 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { data: existingUser, error: lookupError } = await supabase
-      .from("personal")
-      .select("id")
-      .eq("phone", fullPhone)
-      .maybeSingle();
-
-    if (lookupError) {
-      console.warn("Phone lookup failed; proceeding with OTP.", lookupError);
-    } else if (existingUser) {
-      setLoading(false);
-      setErrorMsg("Account already exists. Please sign in.");
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: fullPhone,
-      options: {
-        shouldCreateUser: true,
-      },
+    const response = await fetch("/api/auth/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: fullPhone, mode: "signup" }),
     });
 
     setLoading(false);
 
-    if (error) {
-      const lowerMessage = error.message.toLowerCase();
-      if (lowerMessage.includes("already")) {
-        setErrorMsg("Account already exists. Please sign in.");
-      } else {
-        setErrorMsg(error.message || "Failed to send OTP. Please try again.");
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      setErrorMsg(
+        errorData?.message || "Failed to send OTP. Please try again."
+      );
       return;
     }
 
+    const responseData = await response.json().catch(() => null);
+    if (!responseData?.sessionId) {
+      setErrorMsg("Failed to start OTP verification.");
+      return;
+    }
+
+    setOtpSessionId(responseData.sessionId);
     setStep("otp");
     setTimer(60);
   };
@@ -110,18 +101,45 @@ export default function SignupPage() {
       return;
     }
 
+    if (!otpSessionId) {
+      setErrorMsg("Please request a new OTP.");
+      return;
+    }
+
     setLoading(true);
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone: fullPhone,
-      token: otp,
-      type: "sms",
+    const response = await fetch("/api/auth/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: fullPhone,
+        otp,
+        sessionId: otpSessionId,
+        mode: "signup",
+      }),
     });
 
     setLoading(false);
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      setErrorMsg(errorData?.message || "Invalid OTP. Please try again.");
+      return;
+    }
+
+    const responseData = await response.json().catch(() => null);
+    if (!responseData?.access_token || !responseData?.refresh_token) {
+      setErrorMsg("Could not start session. Please try again.");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.setSession({
+      access_token: responseData.access_token,
+      refresh_token: responseData.refresh_token,
+    });
+
     if (error || !data?.user) {
-      setErrorMsg(error?.message || "Invalid OTP. Please try again.");
+      setErrorMsg(error?.message || "Could not start session.");
       return;
     }
 
@@ -139,20 +157,20 @@ export default function SignupPage() {
           action: "register",
           deviceToken,
           label: navigator.userAgent,
-          accessToken: data.session?.access_token ?? null,
+          accessToken: responseData.access_token ?? null,
         }),
       });
 
       if (!registerResponse.ok) {
         setErrorMsg("Couldn't save this device. You can still sign up.");
-      } else if (data.session?.refresh_token) {
+      } else {
         saveRememberedAccount({
           userId: data.user.id,
           name: displayName,
           phone,
           deviceToken,
-          refreshToken: data.session.refresh_token,
-          accessToken: data.session.access_token,
+          accessToken: responseData.access_token,
+          expiresAt: responseData.expires_at,
         });
       }
     }

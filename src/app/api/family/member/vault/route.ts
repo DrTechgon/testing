@@ -47,6 +47,15 @@ export async function GET(request: Request) {
     const category = (url.searchParams.get('category') || 'all') as
       | FamilyFolder
       | 'all';
+    const includeSignedParam = url.searchParams.get('includeSigned');
+    const includeSigned =
+      includeSignedParam === null
+        ? true
+        : !['0', 'false', 'no'].includes(includeSignedParam.toLowerCase());
+    const limitParam = Number(url.searchParams.get('limit'));
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 50) : null;
+    const sinceParam = url.searchParams.get('since');
+    const sinceTime = sinceParam ? new Date(sinceParam).getTime() : null;
 
     if (!memberId) {
       return NextResponse.json({ message: 'Member ID is required.' }, { status: 400 });
@@ -101,15 +110,21 @@ export async function GET(request: Request) {
         .from('medical-vault')
         .list(`${memberId}/${folder}`, {
           sortBy: { column: 'created_at', order: 'desc' },
+          ...(limit ? { limit } : {}),
         });
 
       if (!data?.length) continue;
 
       for (const file of data) {
+        if (sinceTime && (!file.created_at || new Date(file.created_at).getTime() < sinceTime)) {
+          continue;
+        }
         const path = `${memberId}/${folder}/${file.name}`;
-        const { data: signed } = await adminClient.storage
-          .from('medical-vault')
-          .createSignedUrl(path, 60);
+        const { data: signed } = includeSigned
+          ? await adminClient.storage
+              .from('medical-vault')
+              .createSignedUrl(path, 60)
+          : { data: null };
         results.push({
           name: file.name,
           created_at: file.created_at ?? null,

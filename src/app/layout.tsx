@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import ChatWidget from "@/components/ChatWidget";
-import WeglotProvider from "@/components/WeglotProvider";
+import ConveyThisProvider from "@/components/ConveyThisProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,8 +31,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased relative min-h-screen overflow-x-hidden bg-slate-950`}
       >
-        {/* Weglot (loads once globally) */}
-        <WeglotProvider />
+        {/* ConveyThis (loads once globally) */}
+        <ConveyThisProvider />
 
         {/* App pages */}
         {children}

@@ -15,6 +15,7 @@ import {
   Stethoscope,
   Pill,
   AlertCircle,
+  Bell,
   X,
 } from "lucide-react";
 
@@ -73,6 +74,7 @@ export default function HomePage() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [isSendingSOS, setIsSendingSOS] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [greeting, setGreeting] = useState("Good Morning");
 
   useEffect(() => {
@@ -779,12 +781,33 @@ export default function HomePage() {
                 </span>
               </button>
             </div>
+
+            <div className="mt-6 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setIsNotificationsOpen(true)}
+                className="w-full inline-flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+              >
+                <Bell size={18} className="text-teal-600" />
+                Notifications
+              </button>
+            </div>
           </div>
         
           <NotificationsPanel userId={userId} appointments={appointments} />
         </div>
 
         {/* MODALS */}
+        {isNotificationsOpen && (
+          <Modal onClose={() => setIsNotificationsOpen(false)}>
+            <NotificationsPanel
+              userId={userId}
+              appointments={appointments}
+              variant="modal"
+            />
+          </Modal>
+        )}
+
         {activeSection && (
           <Modal onClose={() => setActiveSection(null)}>
             {activeSection === "calendar" && (
