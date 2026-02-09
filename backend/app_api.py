@@ -3,22 +3,16 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+import json
+import re
+import hashlib
 import traceback
-import tempfile
-import shutil
 from datetime import datetime
 import io
 
-# ✅ Load environment variables from .env (local dev)
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
-# Import RAG pipeline
-from rag_pipeline.clean_chunk import clean_text, chunk_text
-from rag_pipeline.embed_store import build_faiss_index
-from rag_pipeline.rag_query import ask_rag
+# Import extraction/summarization pipeline
+from rag_pipeline.openai_extractor import extract_report_from_text
+from rag_pipeline.openai_summarizer import generate_summary as generate_openai_summary
 import supabase_helper as sb
 
 # Import OCR with in-memory support
@@ -38,8 +32,7 @@ CORS(app, resources={
             "http://127.0.0.1:3000",
             "https://vytara-official.vercel.app",
             "https://*.vercel.app",
-            "https://sauncier-instigative-yolande.ngrok-free.dev",
-            "https://uncensorious-convectional-brianne.ngrok-free.dev"
+            "https://sauncier-instigative-yolande.ngrok-free.dev"
         ],
         "methods": ["GET", "POST", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
@@ -63,6 +56,96 @@ def log_step(step: str, status: str = "info", details: str = None):
     if details:
         message += f": {details}"
     print(message, flush=True)
+
+
+def parse_structured_payload(value):
+    """Best-effort parser for structured extraction payload."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def extract_metadata_from_structured(structured_payload):
+    """Extract patient name/report date from canonical structured payload."""
+    payload = parse_structured_payload(structured_payload) or {}
+    report_block = payload.get("report") if isinstance(payload.get("report"), dict) else {}
+    patient_block = report_block.get("patient") if isinstance(report_block.get("patient"), dict) else {}
+
+    patient_name = (patient_block.get("name") or "").strip() if isinstance(patient_block, dict) else ""
+    report_date = (report_block.get("report_date") or "").strip() if isinstance(report_block, dict) else ""
+    return (patient_name or None), (report_date or None)
+
+
+def extract_patient_name(text: str) -> str:
+    """Extract patient name from medical text."""
+    patterns = [
+        r"Patient\s*Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+        r"Name\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+        r"Mr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+        r"Mrs\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip()
+            if len(name) > 2:
+                return name
+    return "Patient"
+
+
+def extract_report_dates(chunks: list) -> list:
+    """Extract report dates from text chunks."""
+    dates = []
+    date_patterns = [
+        r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+        r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})",
+        r"Date\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+        r"Registered\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+    ]
+
+    full_text = "\n".join(chunks)
+    for pattern in date_patterns:
+        dates.extend(re.findall(pattern, full_text, re.IGNORECASE))
+
+    seen = set()
+    unique = []
+    for date in dates:
+        if date not in seen:
+            seen.add(date)
+            unique.append(date)
+    return unique[:10]
+
+
+def build_summary_input(reports: list):
+    """Build summarizer input from processed report records."""
+    documents = []
+    for report in reports:
+        structured_data = parse_structured_payload(report.get('structured_data_json'))
+        documents.append({
+            "filename": report.get('file_name'),
+            "uploadedAt": report.get('processed_at'),
+            "extractionStatus": "extracted" if structured_data else report.get('processing_status', 'completed'),
+            "extractedText": report.get('extracted_text') or "",
+            "structuredData": structured_data,
+        })
+    return {"documents": documents}
+
+
+def compute_file_hash(file_bytes: bytes) -> str:
+    """Stable hash of source file content."""
+    return hashlib.sha256(file_bytes).hexdigest()
 
 
 # ============================================
@@ -192,7 +275,7 @@ def health_check():
     
     try:
         supabase_ok = True
-        groq_ok = bool(os.getenv("GROQ_API_KEY"))
+        openai_ok = bool(os.getenv("OPENAI_API_KEY"))
         
         try:
             sb.supabase.table('medical_reports_processed').select('id').limit(1).execute()
@@ -201,16 +284,16 @@ def health_check():
             supabase_ok = False
             log_step("Supabase", "error", str(e))
         
-        if not groq_ok:
-            log_step("GROQ API", "warning", "API key not set")
+        if not openai_ok:
+            log_step("OpenAI API", "warning", "API key not set")
         
-        status = "healthy" if (supabase_ok and groq_ok) else "degraded"
+        status = "healthy" if (supabase_ok and openai_ok) else "degraded"
         
         return jsonify({
             "status": status,
-            "message": "Medical RAG API - In-Memory Processing",
+            "message": "Medical Reports API - In-Memory Processing",
             "supabase": supabase_ok,
-            "groq": groq_ok,
+            "openai": openai_ok,
             "mode": "stateless_in_memory",
             "timestamp": datetime.now().isoformat()
         }), 200
@@ -303,9 +386,14 @@ def process_files():
         
         existing_records = filtered_records
         
-        # Build sets for comparison
+        # Build maps for comparison
         storage_paths = set(f"{user_id}/{folder_type}/{f.get('name')}" for f in files)
-        existing_paths = set(r['file_path'] for r in existing_records)
+        existing_by_path = {r['file_path']: r for r in existing_records}
+        existing_by_hash = {}
+        for record in existing_records:
+            source_hash = (record.get('source_file_hash') or '').strip()
+            if source_hash and source_hash not in existing_by_hash:
+                existing_by_hash[source_hash] = record
         
         # Delete orphaned records
         orphaned = [r for r in existing_records if r['file_path'] not in storage_paths]
@@ -320,6 +408,7 @@ def process_files():
                     ).execute()
                     log_step("Deleted", "success", record['file_name'])
                     deleted_count += 1
+                    existing_by_path.pop(record['file_path'], None)
                 except Exception as e:
                     log_step("Delete failed", "error", str(e))
         
@@ -330,6 +419,7 @@ def process_files():
         successful = 0
         failed = 0
         skipped = 0
+        deduplicated = 0
         
         for idx, file_info in enumerate(files, 1):
             file_name = file_info.get('name')
@@ -338,25 +428,90 @@ def process_files():
             print(f"\n{'─'*80}", flush=True)
             print(f"FILE {idx}/{len(files)}: {file_name}", flush=True)
             print(f"{'─'*80}", flush=True)
-            
-            # Skip if already processed
-            if file_path in existing_paths:
-                log_step("Status", "info", "Already processed (skipping)")
-                results.append({
-                    "file_name": file_name,
-                    "status": "skipped",
-                    "message": "Already processed"
-                })
-                skipped += 1
-                continue
-            
-            log_step("Processing", "start", file_name)
-            
+
             try:
+                existing_record = existing_by_path.get(file_path)
+
+                # Fast path for legacy records with no source hash stored yet.
+                if existing_record and not (existing_record.get('source_file_hash') or "").strip():
+                    log_step("Status", "info", "Already processed (legacy skip)")
+                    results.append({
+                        "file_name": file_name,
+                        "status": "skipped",
+                        "message": "Already processed"
+                    })
+                    skipped += 1
+                    continue
+
                 # Get file bytes (IN MEMORY - NO LOCAL STORAGE)
                 log_step("Fetch", "start", "Loading from Supabase")
                 file_bytes = sb.get_file_bytes(file_path)
                 log_step("Fetched", "success", f"{len(file_bytes)} bytes (in memory)")
+
+                source_file_hash = compute_file_hash(file_bytes)
+
+                # Skip unchanged files when path exists and content hash matches.
+                if existing_record:
+                    existing_hash = (existing_record.get('source_file_hash') or "").strip()
+                    if existing_hash and existing_hash == source_file_hash:
+                        log_step("Status", "info", "Already processed (hash match)")
+                        results.append({
+                            "file_name": file_name,
+                            "status": "skipped",
+                            "message": "Already processed",
+                            "source_file_hash": source_file_hash,
+                        })
+                        skipped += 1
+                        continue
+
+                # Reuse extracted output if same content hash exists in another record.
+                duplicate_record = existing_by_hash.get(source_file_hash)
+                if duplicate_record and duplicate_record.get('file_path') != file_path:
+                    log_step("Deduplicate", "start", f"Reusing {duplicate_record.get('file_name')}")
+
+                    duplicated_text = duplicate_record.get('extracted_text') or ""
+                    structured_payload = parse_structured_payload(duplicate_record.get('structured_data_json'))
+                    structured_hash = duplicate_record.get('structured_data_hash') or ""
+                    if structured_payload and not structured_hash:
+                        structured_hash = sb.compute_structured_data_hash(structured_payload)
+
+                    patient_name = duplicate_record.get('patient_name') or extract_patient_name(duplicated_text)
+                    report_date = duplicate_record.get('report_date')
+                    if not report_date:
+                        fallback_dates = extract_report_dates([duplicated_text])
+                        report_date = fallback_dates[0] if fallback_dates else None
+
+                    record_id = sb.save_extracted_data(
+                        user_id=user_id,
+                        file_path=file_path,
+                        file_name=file_name,
+                        folder_type=folder_type,
+                        extracted_text=duplicated_text,
+                        patient_name=patient_name,
+                        report_date=report_date,
+                        structured_data_json=structured_payload,
+                        structured_data_hash=structured_hash,
+                        source_file_hash=source_file_hash
+                    )
+
+                    existing_by_path[file_path] = {
+                        "file_path": file_path,
+                        "file_name": file_name,
+                        "source_file_hash": source_file_hash,
+                    }
+                    deduplicated += 1
+                    successful += 1
+
+                    results.append({
+                        "file_name": file_name,
+                        "status": "deduplicated",
+                        "record_id": record_id,
+                        "message": f"Reused extraction from {duplicate_record.get('file_name')}",
+                        "source_file_hash": source_file_hash,
+                    })
+                    continue
+
+                log_step("Processing", "start", file_name)
                 
                 # Extract text from bytes (IN MEMORY)
                 file_ext = os.path.splitext(file_name)[1]
@@ -370,13 +525,29 @@ def process_files():
                 
                 log_step("Extracted", "success", f"{len(extracted_text)} chars")
                 
-                # Extract metadata
-                log_step("Metadata", "start")
-                from rag_pipeline.rag_query import extract_patient_name, extract_report_dates
+                # Structured extraction using the tested extractor model.
+                structured_payload = None
+                structured_hash = ""
+                try:
+                    log_step("Structured extraction", "start")
+                    structured_raw = extract_report_from_text(extracted_text)
+                    structured_payload = parse_structured_payload(structured_raw)
+                    if not structured_payload:
+                        raise ValueError("Extractor did not return valid JSON")
+                    structured_hash = sb.compute_structured_data_hash(structured_payload)
+                    metric_count = len(structured_payload.get("metrics", []))
+                    log_step("Structured extraction", "success", f"{metric_count} metrics")
+                except Exception as e:
+                    log_step("Structured extraction", "warning", str(e))
                 
-                patient_name = extract_patient_name(extracted_text)
-                report_dates = extract_report_dates([extracted_text])
-                report_date = report_dates[0] if report_dates else None
+                # Extract metadata (prefer structured payload, fallback to regex extraction).
+                log_step("Metadata", "start")
+                patient_name, report_date = extract_metadata_from_structured(structured_payload)
+                if not patient_name:
+                    patient_name = extract_patient_name(extracted_text)
+                if not report_date:
+                    report_dates = extract_report_dates([extracted_text])
+                    report_date = report_dates[0] if report_dates else None
                 
                 log_step("Metadata", "success", f"Patient: {patient_name}, Date: {report_date}")
                 
@@ -389,10 +560,30 @@ def process_files():
                     folder_type=folder_type,
                     extracted_text=extracted_text,
                     patient_name=patient_name,
-                    report_date=report_date
+                    report_date=report_date,
+                    structured_data_json=structured_payload,
+                    structured_data_hash=structured_hash,
+                    source_file_hash=source_file_hash
                 )
                 
                 log_step("Saved", "success", f"ID: {record_id}")
+
+                existing_by_path[file_path] = {
+                    "file_path": file_path,
+                    "file_name": file_name,
+                    "source_file_hash": source_file_hash,
+                }
+                if source_file_hash and source_file_hash not in existing_by_hash:
+                    existing_by_hash[source_file_hash] = {
+                        "file_name": file_name,
+                        "file_path": file_path,
+                        "extracted_text": extracted_text,
+                        "patient_name": patient_name,
+                        "report_date": report_date,
+                        "structured_data_json": structured_payload,
+                        "structured_data_hash": structured_hash,
+                        "source_file_hash": source_file_hash,
+                    }
                 
                 results.append({
                     "file_name": file_name,
@@ -400,7 +591,9 @@ def process_files():
                     "record_id": record_id,
                     "patient_name": patient_name,
                     "report_date": report_date,
-                    "text_length": len(extracted_text)
+                    "text_length": len(extracted_text),
+                    "structured_available": bool(structured_payload),
+                    "source_file_hash": source_file_hash,
                 })
                 successful += 1
                 
@@ -434,6 +627,7 @@ def process_files():
         print(f"{'='*80}", flush=True)
         print(f"  Total: {len(files)}", flush=True)
         print(f"  ✅ Processed: {successful}", flush=True)
+        print(f"  ♻️  Deduplicated: {deduplicated}", flush=True)
         print(f"  ⏭️  Skipped: {skipped}", flush=True)
         print(f"  🗑️  Deleted: {deleted_count}", flush=True)
         print(f"  ❌ Failed: {failed}", flush=True)
@@ -443,6 +637,7 @@ def process_files():
             "success": True,
             "message": f"Processed {successful} files, skipped {skipped}",
             "processed_count": successful,
+            "deduplicated_count": deduplicated,
             "skipped_count": skipped,
             "deleted_count": deleted_count,
             "failed_count": failed,
@@ -467,14 +662,11 @@ def process_files():
 
 @app.route("/api/generate-summary", methods=["POST"])
 def generate_summary():
-    """Generate medical summary - completely in-memory with temp directory"""
+    """Generate medical summary using stored extracted text and structured data."""
     print("\n" + "="*80, flush=True)
     log_step("GENERATE SUMMARY", "start")
     print("="*80, flush=True)
-    
-    # Create temp directory for this request
-    temp_dir = tempfile.mkdtemp(prefix="rag_")
-    
+
     try:
         # Validate request
         data = request.get_json()
@@ -490,9 +682,13 @@ def generate_summary():
         folder_type = data.get("folder_type")
         use_cache = data.get("use_cache", True)
         force_regenerate = data.get("force_regenerate", False)
+        max_new_structured_extractions = data.get("max_new_structured_extractions", 5)
+        try:
+            max_new_structured_extractions = max(0, int(max_new_structured_extractions))
+        except (TypeError, ValueError):
+            max_new_structured_extractions = 5
         
         log_step("Config", "info", f"User: {user_id}, Cache: {use_cache}, Force: {force_regenerate}")
-        log_step("Temp dir", "info", temp_dir)
         
         # Get processed reports
         log_step("Fetching reports", "start")
@@ -532,86 +728,71 @@ def generate_summary():
                     }), 200
             
             log_step("Cache", "info", "Cache miss - generating new summary")
-        
-        # Create chunks
-        log_step("Creating chunks", "start")
-        all_chunks = []
-        
-        for idx, report in enumerate(reports, 1):
-            extracted = report.get('extracted_text') or ""
-            
-            if not extracted.strip():
-                log_step(f"Report {idx}", "warning", f"Empty text in {report.get('file_name')}")
+
+        # Backfill missing structured extraction on existing records (bounded per request).
+        backfilled = 0
+        for report in reports:
+            if backfilled >= max_new_structured_extractions:
+                break
+
+            if parse_structured_payload(report.get('structured_data_json')):
                 continue
-            
-            # Clean text
-            cleaned = clean_text(extracted)
-            
-            # Chunk text
-            chunks = chunk_text(cleaned, max_words=300, overlap_words=50)
-            
-            print(f"  Report {idx}/{len(reports)}: {report.get('file_name')}", flush=True)
-            print(f"    {len(extracted)} chars → {len(cleaned)} cleaned → {len(chunks)} chunks", flush=True)
-            
-            all_chunks.extend(chunks)
-        
-        log_step("Chunking", "success", f"{len(all_chunks)} total chunks")
-        
-        # Validate chunks
-        if not all_chunks:
-            log_step("Chunks", "error", "No valid chunks created")
-            
-            # Fallback: use raw text
-            log_step("Fallback", "warning", "Using raw text as single chunk")
-            combined = "\n\n".join(
-                (r.get('extracted_text') or "").strip()
-                for r in reports
-            )
-            
-            if combined.strip() and len(combined.split()) >= 20:
-                all_chunks = [combined]
-                log_step("Fallback", "success", "Created fallback chunk")
-            else:
-                log_step("Fallback", "error", "Insufficient text in all reports")
-                return jsonify({
-                    "success": False,
-                    "error": "Could not create chunks from reports. Text may be too short or corrupted."
-                }), 500
-        
-        # Build FAISS index in temp directory
-        log_step("Building index", "start")
-        try:
-            index, chunks, vectorizer = build_faiss_index(all_chunks, temp_dir)
-            log_step("Index", "success", "FAISS index ready (in-memory)")
-            
-        except Exception as e:
-            log_step("Index", "error", str(e))
-            traceback.print_exc()
+
+            extracted_text = (report.get('extracted_text') or "").strip()
+            if len(extracted_text) < 50:
+                continue
+
+            try:
+                log_step("Backfill structured", "start", report.get('file_name'))
+                structured_raw = extract_report_from_text(extracted_text)
+                structured_payload = parse_structured_payload(structured_raw)
+                if not structured_payload:
+                    raise ValueError("Extractor did not return valid JSON")
+
+                structured_hash = sb.compute_structured_data_hash(structured_payload)
+                structured_patient, structured_date = extract_metadata_from_structured(structured_payload)
+
+                sb.save_extracted_data(
+                    user_id=user_id,
+                    file_path=report.get('file_path'),
+                    file_name=report.get('file_name'),
+                    folder_type=report.get('folder_type') or folder_type or 'reports',
+                    extracted_text=report.get('extracted_text') or "",
+                    patient_name=structured_patient or report.get('patient_name'),
+                    report_date=structured_date or report.get('report_date'),
+                    structured_data_json=structured_payload,
+                    structured_data_hash=structured_hash,
+                    source_file_hash=report.get('source_file_hash')
+                )
+
+                report['structured_data_json'] = structured_payload
+                report['structured_data_hash'] = structured_hash
+                if structured_patient:
+                    report['patient_name'] = structured_patient
+                if structured_date:
+                    report['report_date'] = structured_date
+
+                backfilled += 1
+                log_step("Backfill structured", "success", report.get('file_name'))
+            except Exception as e:
+                log_step("Backfill structured", "warning", f"{report.get('file_name')}: {e}")
+
+        if backfilled > 0:
+            # Refresh to include DB-updated timestamps/hashes for stable cache signatures.
+            reports = sb.get_processed_reports(user_id, folder_type)
+
+        # Build summarizer input from stored report records.
+        summary_input = build_summary_input(reports)
+        if not summary_input.get("documents"):
             return jsonify({
                 "success": False,
-                "error": f"Failed to build search index: {str(e)}"
+                "error": "No report documents available for summarization."
             }), 500
-        
-        # Generate summary
+
+        # Generate summary with the tested summarizer model.
         log_step("Generating summary", "start")
         try:
-            summary = ask_rag(
-                question="Analyze all medical reports and provide a comprehensive summary",
-                temp_dir=temp_dir,
-                top_k=20,
-                num_reports=len(reports)
-            )
-            
-            # Check for errors
-            if summary.startswith("❌"):
-                log_step("Summary", "error", summary)
-                return jsonify({
-                    "success": False,
-                    "error": summary
-                }), 500
-            
-            log_step("Summary", "success", f"{len(summary)} chars")
-            
+            summary = generate_openai_summary(summary_input)
         except Exception as e:
             log_step("Summary", "error", str(e))
             traceback.print_exc()
@@ -619,6 +800,18 @@ def generate_summary():
                 "success": False,
                 "error": f"Failed to generate summary: {str(e)}"
             }), 500
+
+        if not isinstance(summary, str) or not summary.strip():
+            return jsonify({
+                "success": False,
+                "error": "Summary generation returned empty output."
+            }), 500
+
+        summary = summary.strip()
+        log_step("Summary", "success", f"{len(summary)} chars")
+
+        # Signature may change after structured backfill; recompute before caching.
+        current_signature = sb.compute_signature_from_reports(reports)
         
         # Cache summary
         log_step("Caching", "start")
@@ -635,18 +828,32 @@ def generate_summary():
             log_step("Cache save", "warning", f"Failed: {str(e)}")
         
         # Extract metadata for response
-        from rag_pipeline.rag_query import extract_patient_name, extract_report_dates
-        
-        patient_names = list(set([
-            r.get('patient_name') or extract_patient_name(r.get('extracted_text') or "")
-            for r in reports
-        ]))
-        
-        dates = list(set([
-            r.get('report_date')
-            for r in reports
-            if r.get('report_date')
-        ]))
+        patient_names = []
+        seen_patients = set()
+        dates = []
+        seen_dates = set()
+
+        for report in reports:
+            structured_patient, structured_date = extract_metadata_from_structured(
+                report.get('structured_data_json')
+            )
+
+            patient_name = (
+                report.get('patient_name')
+                or structured_patient
+                or extract_patient_name(report.get('extracted_text') or "")
+            )
+            report_date = report.get('report_date') or structured_date
+            if not report_date:
+                fallback_dates = extract_report_dates([report.get('extracted_text') or ""])
+                report_date = fallback_dates[0] if fallback_dates else None
+
+            if patient_name and patient_name not in seen_patients:
+                patient_names.append(patient_name)
+                seen_patients.add(patient_name)
+            if report_date and report_date not in seen_dates:
+                dates.append(report_date)
+                seen_dates.add(report_date)
         
         # Summary
         print(f"\n{'='*80}", flush=True)
@@ -664,6 +871,7 @@ def generate_summary():
             "report_count": len(reports),
             "patient_names": patient_names,
             "dates": sorted(dates),
+            "structured_backfilled": backfilled,
             "cached": False
         }), 200
         
@@ -676,15 +884,6 @@ def generate_summary():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
-    
-    finally:
-        # Always clean up temp directory
-        try:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-                log_step("Cleanup", "success", f"Removed {temp_dir}")
-        except Exception as e:
-            log_step("Cleanup", "warning", f"Failed to clean temp dir: {e}")
 
 
 # ============================================
@@ -810,7 +1009,7 @@ def internal_error(error):
 
 if __name__ == "__main__":
     print("\n" + "="*80, flush=True)
-    print("🚀 MEDICAL RAG API SERVER - IN-MEMORY PROCESSING", flush=True)
+    print("🚀 MEDICAL REPORTS API SERVER - IN-MEMORY PROCESSING", flush=True)
     print("="*80, flush=True)
     print("\n📡 Endpoints:", flush=True)
     print("  GET    /api/health", flush=True)
@@ -822,8 +1021,8 @@ if __name__ == "__main__":
     print("\n💡 Features:", flush=True)
     print("  ✓ Zero local file storage", flush=True)
     print("  ✓ Complete in-memory processing", flush=True)
-    print("  ✓ Stateless temp directories", flush=True)
-    print("  ✓ Fixed embedding dimensions", flush=True)
+    print("  ✓ OpenAI structured extraction", flush=True)
+    print("  ✓ OpenAI clinical-style summarization", flush=True)
     print("\n" + "="*80 + "\n", flush=True)
     
     port = int(os.environ.get("PORT", 5000))

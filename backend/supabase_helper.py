@@ -1,6 +1,7 @@
 # backend/supabase_helper.py
 
 import os
+import json
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import requests
@@ -128,9 +129,38 @@ def get_file_as_bytesio(file_path: str) -> io.BytesIO:
 # DATABASE OPERATIONS
 # ============================================
 
+def _coerce_structured_data(value):
+    """Normalize structured payload to a JSON-serializable object."""
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def compute_structured_data_hash(structured_data) -> str:
+    """Create a stable hash for structured extraction payload."""
+    normalized = _coerce_structured_data(structured_data)
+    if normalized is None:
+        return ""
+
+    compact = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(compact.encode('utf-8')).hexdigest()
+
+
 def save_extracted_data(user_id: str, file_path: str, file_name: str, 
                        folder_type: str, extracted_text: str, 
-                       patient_name: str = None, report_date: str = None):
+                       patient_name: str = None, report_date: str = None,
+                       structured_data_json=None, structured_data_hash: str = None,
+                       source_file_hash: str = None):
     """Save extracted text to database"""
     print(f"\n💾 Saving to database: {file_name}")
     
@@ -144,21 +174,61 @@ def save_extracted_data(user_id: str, file_path: str, file_name: str,
             'extracted_text': extracted_text,
             'patient_name': patient_name,
             'report_date': report_date,
+            'source_file_hash': source_file_hash,
             'processing_status': 'completed',
             'processed_at': 'NOW()'
         }
+
+        structured_payload = _coerce_structured_data(structured_data_json)
+        if structured_payload is not None:
+            data['structured_data_json'] = structured_payload
+            data['structured_data_hash'] = (
+                structured_data_hash or compute_structured_data_hash(structured_payload)
+            )
+            data['structured_extracted_at'] = 'NOW()'
         
-        # Use upsert to handle duplicates
-        result = supabase.table('medical_reports_processed').upsert(
-            data,
-            on_conflict='user_id,file_path'
-        ).execute()
+        try:
+            # Use upsert to handle duplicates
+            result = supabase.table('medical_reports_processed').upsert(
+                data,
+                on_conflict='user_id,file_path'
+            ).execute()
+        except Exception as e:
+            # Support deployments where structured columns are not migrated yet.
+            error_text = str(e).lower()
+            if any(
+                field in error_text
+                for field in (
+                    'structured_data_json',
+                    'structured_data_hash',
+                    'structured_extracted_at',
+                    'source_file_hash'
+                )
+            ):
+                print("⚠️ Optional columns unavailable; saving base text record")
+                data.pop('structured_data_json', None)
+                data.pop('structured_data_hash', None)
+                data.pop('structured_extracted_at', None)
+                data.pop('source_file_hash', None)
+                result = supabase.table('medical_reports_processed').upsert(
+                    data,
+                    on_conflict='user_id,file_path'
+                ).execute()
+            else:
+                raise
         
         record_id = result.data[0]['id'] if result.data else None
         print(f"✅ Saved (ID: {record_id})")
         print(f"   Patient: {patient_name or 'Unknown'}")
         print(f"   Date: {report_date or 'Unknown'}")
         print(f"   Text length: {len(extracted_text)} characters")
+        print(f"   File hash: {(source_file_hash or 'N/A')[:16]}...")
+        if structured_payload is not None:
+            metric_count = (
+                len(structured_payload.get('metrics', []))
+                if isinstance(structured_payload, dict) else 0
+            )
+            print(f"   Structured metrics: {metric_count}")
         
         return record_id
         
@@ -201,7 +271,12 @@ def compute_signature_from_reports(reports: list) -> str:
             fp = r.get('file_path') or r.get('file_name') or ''
             text_len = len(r.get('extracted_text') or '')
             processed_at = r.get('processed_at') or ''
-            items.append(f"{fp}|{text_len}|{processed_at}")
+            source_file_hash = r.get('source_file_hash') or ''
+            structured_hash = r.get('structured_data_hash') or ''
+            structured_at = r.get('structured_extracted_at') or ''
+            items.append(
+                f"{fp}|{text_len}|{processed_at}|{source_file_hash}|{structured_hash}|{structured_at}"
+            )
 
         items.sort()
         concat = ";;".join(items)

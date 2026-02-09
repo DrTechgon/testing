@@ -4,7 +4,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const FLASK_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+const FLASK_API_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  'http://localhost:5000';
 
 async function callFlask(endpoint: string, method: string, body?: any) {
   const url = `${FLASK_API_URL}${endpoint}`;
@@ -42,7 +45,14 @@ export async function POST(request: NextRequest) {
     console.log('📥 [Next.js API] POST /api/medical');
     
     const body = await request.json();
-    const { action, folder_type, use_cache, user_id } = body;
+    const {
+      action,
+      folder_type,
+      use_cache,
+      force_regenerate,
+      max_new_structured_extractions,
+      user_id
+    } = body;
     
     if (!user_id) {
       return NextResponse.json(
@@ -65,7 +75,9 @@ export async function POST(request: NextRequest) {
       const result = await callFlask('/api/generate-summary', 'POST', {
         user_id,
         folder_type,
-        use_cache: use_cache !== false
+        use_cache: use_cache !== false,
+        force_regenerate: force_regenerate === true,
+        max_new_structured_extractions
       });
       return NextResponse.json(result.data, { status: result.status });
     }

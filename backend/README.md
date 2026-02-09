@@ -34,17 +34,17 @@ pip install -r requirements.txt
 Create a `.env` file in the `backend` folder with these credentials:
 
 ```env
-# Groq API Key
-GROQ_API_KEY=gsk_your_key_here
+# OpenAI API Key
+OPENAI_API_KEY=sk-your-key-here
 
 # Supabase (Already configured - same database)
 SUPABASE_URL=https://mhlkzulgpeirtjiopzvu.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd...
 ```
 
-**Note:** Supabase is already set up with tables and storage. You just need to add the Groq API key.
+**Note:** Supabase is already set up with tables and storage. You just need to add the OpenAI API key.
 
-Get your Groq API key from: https://console.groq.com/keys (free tier available)
+Get your OpenAI API key from: https://platform.openai.com/api-keys
 
 ### Step 5: Run the Server
 
@@ -55,7 +55,7 @@ python app_api.py
 You should see:
 ```
 ✅ Supabase client initialized
-🚀 Medical RAG API Server Starting...
+🚀 MEDICAL REPORTS API SERVER - IN-MEMORY PROCESSING
 ```
 
 Server is now running at: **http://localhost:5000**
@@ -72,8 +72,9 @@ Expected response:
 ```json
 {
   "status": "healthy",
-  "message": "Medical RAG API is running",
-  "supabase_connected": true
+  "message": "Medical Reports API - In-Memory Processing",
+  "supabase": true,
+  "openai": true
 }
 ```
 
@@ -89,7 +90,7 @@ The backend is now running and connected to the existing Supabase database.
 pip install -r requirements.txt
 ```
 
-### "GROQ_API_KEY not set" error
+### "OPENAI_API_KEY not set" error
 - Check `.env` file exists in `backend/` folder
 - Verify the API key is correct (no quotes needed)
 
