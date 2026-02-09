@@ -143,17 +143,13 @@ export function MedicalSummaryModal({
     }
   };
 
-  const generateSummary = async (
-    options?: { forceRegenerate?: boolean }
-  ): Promise<{ ok: boolean; errorMessage?: string }> => {
+  const generateSummary = async (): Promise<{ ok: boolean; errorMessage?: string }> => {
     if (!userId) {
       console.error('❌ [Frontend] No userId for summary generation');
       const authError = 'Please log in to use this feature';
       setError(authError);
       return { ok: false, errorMessage: authError };
     }
-
-    const forceRegenerate = options?.forceRegenerate === true;
 
     setIsGenerating(true);
     setError('');
@@ -168,8 +164,8 @@ export function MedicalSummaryModal({
         body: JSON.stringify({
           action: 'generate-summary',
           folder_type: folderType,
-          use_cache: !forceRegenerate,
-          force_regenerate: forceRegenerate,
+          use_cache: true,
+          force_regenerate: false,
           user_id: userId
         }),
       });
@@ -209,11 +205,11 @@ export function MedicalSummaryModal({
     // Always process first so newly uploaded reports are included in summary.
     const processed = await processFiles();
     if (!processed) {
-      console.error('❌ [Modal] Processing failed, trying summary from existing processed reports');
-      await generateSummary();
-    } else {
-      await generateSummary({ forceRegenerate: true });
+      console.error('❌ [Modal] Processing failed, skipping summary to avoid stale cache results');
+      return;
     }
+
+    await generateSummary();
   };
 
   if (!isOpen) {
