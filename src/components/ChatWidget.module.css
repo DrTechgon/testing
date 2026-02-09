@@ -104,35 +104,6 @@
   line-height: 1;
 }
 
-<<<<<<< HEAD
-/* Language Selector */
-.languageSelector {
-  display: flex;
-  align-items: center;
-}
-
-.languageSelect {
-  background: #0f766e;
-  border: 1px solid #134e4a;
-  color: #e5e7eb;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-}
-
-.languageSelect:focus {
-  border-color: #5eead4;
-}
-
-.languageSelect option {
-  background: #042f2e;
-  color: #e5e7eb;
-}
-
-=======
->>>>>>> b96bf647f27bf548f370b28e47bcadc5e6bd465b
 /* Messages */
 .messages {
   flex: 1;

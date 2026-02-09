@@ -9,10 +9,6 @@ export default function ChatWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-<<<<<<< HEAD
-
-=======
->>>>>>> b96bf647f27bf548f370b28e47bcadc5e6bd465b
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -69,10 +65,7 @@ export default function ChatWidget() {
             <strong>Vytara Assistant</strong>
             <span>Healthcare Support</span>
           </div>
-<<<<<<< HEAD
           {/* Language selector removed - English only */}
-=======
->>>>>>> b96bf647f27bf548f370b28e47bcadc5e6bd465b
           <button onClick={() => setOpen(false)}>✕</button>
         </div>
 
