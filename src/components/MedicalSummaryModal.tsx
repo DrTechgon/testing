@@ -18,6 +18,15 @@ interface MedicalSummaryModalProps {
   userId?: string;  // ← ADD THIS
 }
 
+const PUBLIC_BACKEND_BASE_URL = (
+  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'
+).replace(/\/+$/, '');
+const HEALTH_CHECK_URL = `${PUBLIC_BACKEND_BASE_URL}/api/health`;
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export function MedicalSummaryModal({ 
   isOpen, 
   onClose, 
@@ -52,7 +61,7 @@ export function MedicalSummaryModal({
         const uid = parsed.user?.id || '';
         setUserId(uid);
         console.log('✅ [Modal] User ID from localStorage:', uid);
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('❌ [Modal] Parse error:', e);
         setError('Authentication error. Please log in again.');
       }
@@ -122,9 +131,9 @@ export function MedicalSummaryModal({
       console.log('✅ [Frontend] Files processed:', data.processed_count);
       return true;
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ [Frontend] Process error:', err);
-      setError(err.message);
+      setError(getErrorMessage(err));
       return false;
     } finally {
       setIsProcessing(false);
@@ -175,9 +184,9 @@ export function MedicalSummaryModal({
       
       console.log('✅ [Frontend] State updated, summary should display');
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ [Frontend] Summary error:', err);
-      setError(err.message);
+      setError(getErrorMessage(err));
     } finally {
       setIsGenerating(false);
     }
@@ -263,8 +272,8 @@ export function MedicalSummaryModal({
                   <p className="font-semibold text-red-900 mb-2">Unable to Generate Summary</p>
                   <p className="text-sm text-red-700 mb-3">{error}</p>
                   <ul className="text-xs text-red-600 space-y-1">
-                    <li>• Make sure you're logged in</li>
-                    <li>• Check Flask is running: <a href="http://localhost:5000/api/health" target="_blank" className="underline">http://localhost:5000/api/health</a></li>
+                    <li>• Make sure you&apos;re logged in</li>
+                    <li>• Check Flask is running: <a href={HEALTH_CHECK_URL} target="_blank" className="underline">{HEALTH_CHECK_URL}</a></li>
                     <li>• Check you have medical reports uploaded in Supabase Storage</li>
                     <li>• Check browser console (F12) for detailed errors</li>
                   </ul>

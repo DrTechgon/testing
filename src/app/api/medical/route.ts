@@ -4,12 +4,29 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const FLASK_API_URL =
+const LOCAL_FLASK_API_URL = 'http://localhost:5000';
+const RENDER_FLASK_API_URL = 'https://testing-9obu.onrender.com';
+const FLASK_API_URL = (
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
-  'http://localhost:5000';
+  (process.env.NODE_ENV === 'production'
+    ? RENDER_FLASK_API_URL
+    : LOCAL_FLASK_API_URL)
+).replace(/\/+$/, '');
 
-async function callFlask(endpoint: string, method: string, body?: any) {
+type FlaskProxyError = Error & { status?: number };
+
+function createProxyError(message: string, status: number): FlaskProxyError {
+  const error = new Error(message) as FlaskProxyError;
+  error.status = status;
+  return error;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+async function callFlask(endpoint: string, method: string, body?: unknown) {
   const url = `${FLASK_API_URL}${endpoint}`;
   
   console.log(`📡 [Next.js API] Calling Flask: ${method} ${url}`);
@@ -25,18 +42,44 @@ async function callFlask(endpoint: string, method: string, body?: any) {
   
   try {
     const response = await fetch(url, options);
+    const contentType = response.headers.get('content-type') || '';
     const responseText = await response.text();
+    const trimmedResponseText = responseText.trimStart();
     
-    if (responseText.startsWith('{') || responseText.startsWith('[')) {
-      const data = JSON.parse(responseText);
-      console.log(`✅ [Next.js API] Flask response OK`);
-      return { status: response.status, data };
-    } else {
-      throw new Error(`Flask returned HTML instead of JSON`);
+    if (
+      contentType.includes('application/json') ||
+      trimmedResponseText.startsWith('{') ||
+      trimmedResponseText.startsWith('[')
+    ) {
+      try {
+        const data = JSON.parse(trimmedResponseText);
+        console.log(`✅ [Next.js API] Flask response OK`);
+        return { status: response.status, data };
+      } catch {
+        throw createProxyError(
+          `Flask returned invalid JSON (${response.status}) from ${url}`,
+          502
+        );
+      }
     }
-  } catch (error: any) {
-    console.error('❌ [Next.js API] Error:', error.message);
-    throw error;
+
+    const bodyPreview =
+      trimmedResponseText.slice(0, 160).replace(/\s+/g, ' ') || '<empty>';
+    throw createProxyError(
+      `Flask returned non-JSON (${response.status}) from ${url}. Set BACKEND_URL/NEXT_PUBLIC_BACKEND_URL correctly. Response starts with: ${bodyPreview}`,
+      502
+    );
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    console.error('❌ [Next.js API] Error:', errorMessage);
+    if (error instanceof Error && 'status' in error && typeof error.status === 'number') {
+      throw error;
+    }
+
+    throw createProxyError(
+      `Failed to reach Flask at ${url}: ${errorMessage}`,
+      503
+    );
   }
 }
 
@@ -89,11 +132,15 @@ export async function POST(request: NextRequest) {
       );
     }
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ [Next.js API] Error:', error);
+    const status =
+      error instanceof Error && 'status' in error && typeof error.status === 'number'
+        ? error.status
+        : 500;
     return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
+      { success: false, error: getErrorMessage(error), backend_url: FLASK_API_URL },
+      { status }
     );
   }
 }
