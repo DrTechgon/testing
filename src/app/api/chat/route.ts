@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 
-const FLASK_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+const FLASK_API_URL = process.env.NEXT_PUBLIC_CHATBOT_URL || 'http://localhost:5000';
 
 export async function POST(request: NextRequest) {
   try {
