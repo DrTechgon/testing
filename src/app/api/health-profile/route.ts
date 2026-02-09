@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/server";
-
 type ProfilePayload = {
   displayName?: string;
   dateOfBirth: string; // YYYY-MM-DD

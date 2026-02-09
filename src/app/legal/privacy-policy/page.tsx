@@ -475,3 +475,5 @@ return (
 
 
 export default PrivacyPolicyLayout;
+
+

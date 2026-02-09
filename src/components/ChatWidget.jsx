@@ -65,7 +65,6 @@ export default function ChatWidget() {
             <strong>Vytara Assistant</strong>
             <span>Healthcare Support</span>
           </div>
-          {/* Language selector removed - English only */}
           <button onClick={() => setOpen(false)}>✕</button>
         </div>
 

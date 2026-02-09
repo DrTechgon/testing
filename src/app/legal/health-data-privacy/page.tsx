@@ -539,3 +539,5 @@ Vytara does not provide medical diagnosis or treatment. Users should consult qua
 
 
 export default HealthDataPrivacyLayout;
+
+
