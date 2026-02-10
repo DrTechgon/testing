@@ -4,7 +4,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const FLASK_API_URL = process.env.NEXT_PUBLIC_FLASK_API_URL || 'http://localhost:8000';
+// Base URL for the medical RAG Flask backend.
+// Prefer env var when set; otherwise default to the Render deployment.
+const FLASK_API_URL = process.env.NEXT_PUBLIC_FLASK_API_URL || 'https://medical-rag-backend-phaq.onrender.com';
 
 async function callFlask(endpoint: string, method: string, body?: any) {
   const url = `${FLASK_API_URL}${endpoint}`;
