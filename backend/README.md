@@ -117,7 +117,7 @@ backend/
 
 ## 🔗 API Endpoints
 
-Once running, the API provides:
+Once running, the API provides: 
 
 - `GET /api/health` - Health check
 - `POST /api/process-files` - Extract text from PDFs
