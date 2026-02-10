@@ -245,9 +245,9 @@ interface RotatingCardsCarouselProps {
 
 const RotatingCardsCarousel = ({ isMobile }: RotatingCardsCarouselProps) => {
   const cards: Card[] = [
-    { id: 1, image: '/images/vytara/homepagess.png' },
-    { id: 2, image: '/images/vytara/vaulpagess.png' },
-    { id: 3, image: '/images/vytara/profilepagess.png' },
+    { id: 1, image: '/images/G1/homepagess.png' },
+    { id: 2, image: '/images/G1/vaulpagess.png' },
+    { id: 3, image: '/images/G1/profilepagess.png' },
   ];
 
   const [rotation, setRotation] = useState(0);
@@ -445,7 +445,7 @@ export default function Landing() {
             {/* LOGO */}
             <div className="flex gap-2 items-center md:justify-start">
               <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-              <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+              <p className="font-bold text-[#14b8a6] text-xl">G1</p>
             </div>
 
             {/* DESKTOP NAV CENTER */}
@@ -507,10 +507,10 @@ export default function Landing() {
 
         </nav>
 
-        {/* WHAT IS VYTARA */}
+        {/* WHAT IS G1 */}
         <div className="px-4 pt-12 pb-4 md:pb-8 w-full">
           <h1 className="text-4xl md:text-5xl font-bold text-black text-center">The <em>complete</em> AI-powered platform for your health</h1>
-          <p className="text-center text-gray-600 italic text-base mt-4">vytara remembers for you, explains your health, acts when you can't and cares for your loved one's with you.
+          <p className="text-center text-gray-600 italic text-base mt-4">G1 remembers for you, explains your health, acts when you can't and cares for your loved one's with you.
 </p>
         </div>
 
@@ -544,7 +544,7 @@ export default function Landing() {
                     <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
                       Array.isArray(heroExpanded) && heroExpanded.includes(0) ? 'opacity-100' : 'opacity-0'
                     }`}>
-                      <p className="text-xs text-gray-800 text-center">No more scattered documents, Vytara has all your medical documents securely stored in one place</p>
+                      <p className="text-xs text-gray-800 text-center">No more scattered documents, G1 has all your medical documents securely stored in one place</p>
                     </div>
                   </div>
                   <div
@@ -602,7 +602,7 @@ export default function Landing() {
                     <div className={`absolute left-0 top-0 h-full w-full bg-blue-200 flex items-center justify-center p-3 transition-all duration-300 ${
                       Array.isArray(heroExpanded) && heroExpanded.includes(2) ? 'opacity-100' : 'opacity-0'
                     }`}>
-                      <p className="text-xs text-gray-800 text-center">Freely monitor the wellness of your loved ones with Vytara</p>
+                      <p className="text-xs text-gray-800 text-center">Freely monitor the wellness of your loved ones with G1</p>
                     </div>
                   </div>
                   <div
@@ -633,7 +633,7 @@ export default function Landing() {
                   {
                     title: 'Disorganized Documents?',
                     icon: Lock,
-                    expandedText: 'No more scattered documents, Vytara has all your medical documents securely stored in one place'
+                    expandedText: 'No more scattered documents, G1 has all your medical documents securely stored in one place'
                   },
                   {
                     title: 'Emergency Requirements?',
@@ -643,7 +643,7 @@ export default function Landing() {
                   {
                     title: 'Unmonitored Wellness?',
                     icon: Users,
-                    expandedText: 'Freely monitor the wellness of your loved ones with Vytara'
+                    expandedText: 'Freely monitor the wellness of your loved ones with G1'
                   }
                 ].map(({ title, icon: Icon, expandedText }, i) => (
                   <div
@@ -693,7 +693,7 @@ export default function Landing() {
 
         {/* PROMO */}
         <section className="px-4 py-10 text-center text-gray-700">
-          <p className="text-xl">Vytara For You.</p>
+          <p className="text-xl">G1 For You.</p>
           <p>Your health. Your family. Our care.</p>
         </section>
 
@@ -706,7 +706,7 @@ export default function Landing() {
             {/* LEFT CARDS */}
             <div className="flex flex-col gap-6">
               <div className="bg-[#288f88] h-48 rounded-3xl mission-top-left overflow-hidden">
-                <img src="/images/vytara/missionimg.jpg" className="w-full h-full object-cover" alt="Mission" />
+                <img src="/images/G1/missionimg.jpg" className="w-full h-full object-cover" alt="Mission" />
               </div>
               <div className="bg-[#10736C] h-48 rounded-3xl mission-bottom-left flex flex-col items-start justify-center p-6 text-white">
                 <Brain size={40} className="mb-3" />
@@ -744,7 +744,7 @@ export default function Landing() {
                     Help is 1 click away with our SOS button which alerts your family and emergency services.
                   </p>
                 </div>
-                <img src="images/vytara/sosfeature.jpg" className="rounded-2xl flex-shrink-0 md:order-2 order-1" alt="Emergency SOS" />
+                <img src="images/G1/sosfeature.jpg" className="rounded-2xl flex-shrink-0 md:order-2 order-1" alt="Emergency SOS" />
               </div>
             </FeatureStackCard>
 
@@ -758,7 +758,7 @@ export default function Landing() {
                     AI summaries that help you understand your health, at your fingertips.
                   </p>
                 </div>
-                <img src="images/vytara/safestorefeature.jpg" className="rounded-2xl flex-shrink-0 md:order-2 order-1" alt="Secure Storage" />
+                <img src="images/G1/safestorefeature.jpg" className="rounded-2xl flex-shrink-0 md:order-2 order-1" alt="Secure Storage" />
               </div>
             </FeatureStackCard>
 
@@ -772,7 +772,7 @@ export default function Landing() {
                     Monitor the health of your loved ones from anywhere.
                   </p>
                 </div>
-                <img src="images/vytara/familyfeature.jpg" className="rounded-2xl flex-shrink-0 md:order-2 order-1" alt="Family Profiles" />
+                <img src="images/G1/familyfeature.jpg" className="rounded-2xl flex-shrink-0 md:order-2 order-1" alt="Family Profiles" />
               </div>
             </FeatureStackCard>
 
@@ -792,7 +792,7 @@ export default function Landing() {
               <div className="md:col-span-1">
                 <div className="flex gap-2 items-center mb-4">
                   <div className="w-8 h-8 bg-gradient-to-r from-[#134E4A] to-[#14b8a6] rounded-lg" />
-                  <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+                  <p className="font-bold text-[#14b8a6] text-xl">G1</p>
                 </div>
                 <p className="text-gray-400 text-sm">
                   Healthcare, beautifully reimagined. Your health. Your family. Your control.
@@ -803,7 +803,7 @@ export default function Landing() {
               <div className="md:col-span-1">
                 <h3 className="font-semibold text-lg mb-4">Contact Us</h3>
                 <div className="space-y-2 text-gray-400 text-sm">
-                  <p>Email: hello@vytara.com</p>
+                  <p>Email: hello@G1.com</p>
                   <p>Phone: 09511701519</p>
                   <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
                 </div>
@@ -826,7 +826,7 @@ export default function Landing() {
               {/* BRAND */}
               <div className="flex gap-2 items-center">
                 <div className="w-6 h-6 bg-gradient-to-r from-[#134E4A] to-[#14b8a6] rounded-lg" />
-                <p className="font-bold text-[#14b8a6] text-lg">Vytara</p>
+                <p className="font-bold text-[#14b8a6] text-lg">G1</p>
               </div>
 
               {/* CONTACT US AND LEGAL SIDE BY SIDE */}
@@ -835,7 +835,7 @@ export default function Landing() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-xs mb-1">Contact Us</h3>
                   <div className="space-y-0.5 text-gray-400 text-xs">
-                    <p>Email: hello@vytara.com</p>
+                    <p>Email: hello@G1.com</p>
                     <p>Phone: 095117019</p>
                     <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
                   </div>
@@ -855,7 +855,7 @@ export default function Landing() {
             </div>
 
             <div className="border-t border-gray-800 mt-8 pt-8 text-center hidden md:block">
-              <p className="text-gray-400 text-sm">© {new Date().getFullYear()} Vytara. All rights reserved.</p>
+              <p className="text-gray-400 text-sm">© {new Date().getFullYear()} G1. All rights reserved.</p>
             </div>
           </div>
         </footer>

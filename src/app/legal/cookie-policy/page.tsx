@@ -129,7 +129,7 @@ const CookiePolicyLayout = () => {
           {/* LOGO */}
           <div className="flex gap-2 items-center md:justify-start">
             <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-            <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+            <p className="font-bold text-[#14b8a6] text-xl">G1</p>
           </div>
 
           {/* DESKTOP NAV CENTER */}
@@ -260,7 +260,7 @@ const CookiePolicyLayout = () => {
             <p className="text-sm text-gray-600 mb-4">
               Last updated: 20 Januaray 2026
             </p>
-            <h1 className="text-5xl font-serif text-black mb-8">Vytara Cookie Policy</h1>
+            <h1 className="text-5xl font-serif text-black mb-8">G1 Cookie Policy</h1>
           </div>
 
           {/* Introductory Text*/}
@@ -272,7 +272,7 @@ const CookiePolicyLayout = () => {
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Introduction</h2>
             <p className="text-gray-700 leading-relaxed mb-4">
-              We use cookies to understand how you use the Vytara platform and website. This policy explains what they are, how we use them, and how you can switch them off if you want.
+              We use cookies to understand how you use the G1 platform and website. This policy explains what they are, how we use them, and how you can switch them off if you want.
               Just like our Privacy Policy, if there are things you don't understand, our Information Security Team are always happy to chat, so please send us an email at example@gmail.com 
             </p>
           </section>
@@ -300,7 +300,7 @@ const CookiePolicyLayout = () => {
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Types of cookies we use</h2>
             <p className="text-gray-700 leading-relaxed mb-6">
-              Vytara uses the following categories of cookies:
+              G1 uses the following categories of cookies:
             </p>
             <CookieTypesTable />
           </section>
@@ -333,7 +333,7 @@ const CookiePolicyLayout = () => {
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Your choices and control</h2>
             <p className="text-gray-700 leading-relaxed">
-             You can control or delete cookies through your browser settings at any time. Most browsers allow you to: View stored cookies, Block cookies, Delete existing cookies. Please note that disabling certain cookies may impact the functionality of the Vytara platform.
+             You can control or delete cookies through your browser settings at any time. Most browsers allow you to: View stored cookies, Block cookies, Delete existing cookies. Please note that disabling certain cookies may impact the functionality of the G1 platform.
             </p>
           </section>
 
@@ -384,7 +384,7 @@ Further information about cookies, including how to see what cookies have been s
           <div className="md:col-span-1">
             <div className="flex gap-2 items-center mb-4">
               <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-              <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+              <p className="font-bold text-[#14b8a6] text-xl">G1</p>
             </div>
             <p className="text-gray-400 text-sm">
               Healthcare, beautifully reimagined. Your health. Your family. Your control.
@@ -395,7 +395,7 @@ Further information about cookies, including how to see what cookies have been s
           <div className="md:col-span-1">
             <h3 className="font-semibold text-lg mb-4">Contact Us</h3>
             <div className="space-y-2 text-gray-400 text-sm">
-              <p>Email: hello@vytara.com</p>
+              <p>Email: hello@G1.com</p>
               <p>Phone: 09511701519</p>
               <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
             </div>
@@ -418,7 +418,7 @@ Further information about cookies, including how to see what cookies have been s
           {/* BRAND */}
           <div className="flex gap-2 items-center">
             <div className="w-6 h-6 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-            <p className="font-bold text-[#14b8a6] text-lg">Vytara</p>
+            <p className="font-bold text-[#14b8a6] text-lg">G1</p>
           </div>
 
           {/* CONTACT US AND LEGAL SIDE BY SIDE */}
@@ -427,7 +427,7 @@ Further information about cookies, including how to see what cookies have been s
             <div className="flex-1">
               <h3 className="font-semibold text-xs mb-1">Contact Us</h3>
               <div className="space-y-0.5 text-gray-400 text-xs">
-                <p>Email: hello@vytara.com</p>
+                <p>Email: hello@G1.com</p>
                 <p>Phone: 09511701519</p>
                 <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
               </div>
@@ -447,7 +447,7 @@ Further information about cookies, including how to see what cookies have been s
         </div>
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center hidden md:block">
-          <p className="text-gray-400 text-sm">© {new Date().getFullYear()} Vytara. All rights reserved.</p>
+          <p className="text-gray-400 text-sm">© {new Date().getFullYear()} G1. All rights reserved.</p>
         </div>
       </div>
     </footer>

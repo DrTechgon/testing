@@ -204,7 +204,7 @@ export default function SignupPage() {
             <div className="flex justify-center mb-6">
               <Image
                 src="/vytara-logo.png"
-                alt="Vytara Logo"
+                alt="G1 Logo"
                 width={96}
                 height={96}
                 className="w-24 h-24"

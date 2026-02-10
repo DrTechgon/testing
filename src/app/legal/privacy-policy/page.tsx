@@ -76,7 +76,7 @@ return (
         {/* LOGO */}
         <div className="flex gap-2 items-center md:justify-start">
           <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-          <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+          <p className="font-bold text-[#14b8a6] text-xl">G1</p>
         </div>
 
         {/* DESKTOP NAV CENTER */}
@@ -207,7 +207,7 @@ return (
             <p className="text-sm text-gray-600 mb-4">
               Last updated: 20 January 2026
             </p>
-            <h1 className="text-5xl font-serif text-black mb-8">Vytara Privacy Policy</h1>
+            <h1 className="text-5xl font-serif text-black mb-8">G1 Privacy Policy</h1>
           </div>
 
           {/* Introductory Text Section */}
@@ -219,8 +219,8 @@ return (
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Introductory Text</h2>
             <p className="text-gray-700 leading-relaxed mb-4">
-              This Privacy Policy describes how Vytara collects, uses, and shares your personal data when you use our
-              website at <a href="https://vytara-ssr.vercel.app" className="text-blue-600 hover:underline">https://vytara-ssr.vercel.app</a> ("Site"), you use our Vytara app and platform, you contact us, you sign up to
+              This Privacy Policy describes how G1 collects, uses, and shares your personal data when you use our
+              website at <a href="https://G1-ssr.vercel.app" className="text-blue-600 hover:underline">https://G1-ssr.vercel.app</a> ("Site"), you use our G1 app and platform, you contact us, you sign up to
               our newsletter, or you otherwise engage us. We know that these aren't always the easiest documents to
               read, so we have tried to make this Policy as short and easy to understand as possible. We make updates to
               this Privacy Policy and will let you know by email when we do, so we encourage you to come back and have
@@ -237,8 +237,8 @@ return (
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Who are we?</h2>
             <p className="text-gray-700 leading-relaxed">
-            Vytara is a digital health platform that uses artificial intelligence to help users better understand their health information. Our services allow users to create a secure profile, upload medical reports, receive AI-generated health insights, and interact with an AI assistant for general health-related guidance.
-            Vytara is designed to support health awareness and decision-making, but it does not replace professional medical advice, diagnosis, or treatment.
+            G1 is a digital health platform that uses artificial intelligence to help users better understand their health information. Our services allow users to create a secure profile, upload medical reports, receive AI-generated health insights, and interact with an AI assistant for general health-related guidance.
+            G1 is designed to support health awareness and decision-making, but it does not replace professional medical advice, diagnosis, or treatment.
             </p>
           </section>
 
@@ -271,7 +271,7 @@ return (
             <h2 className="text-3xl font-serif mb-6 text-black">How we use your personal data and why?</h2>
             <p className="text-gray-700 leading-relaxed">
               We use your personal data for the following purposes:
-              To create and manage your Vytara account,
+              To create and manage your G1 account,
               To analyze uploaded medical reports and generate AI-based health insights,
               To personalize user experience and improve platform accuracy,
               To enable chatbot-based health guidance and contextual responses,
@@ -364,7 +364,7 @@ return (
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Data transfers, storage and processing</h2>
             <p className="text-gray-700 leading-relaxed">
-              Your personal data may be stored and processed on secure servers operated by Vytara or trusted service providers.
+              Your personal data may be stored and processed on secure servers operated by G1 or trusted service providers.
               Data may be transferred across regions solely for operational purposes, and we take reasonable steps to ensure appropriate safeguards are in place to protect your information during such transfers.
             </p>
           </section>
@@ -378,7 +378,7 @@ return (
           >
             <h2 className="text-3xl font-serif mb-6 text-black">Cookies and tracking technologies</h2>
             <p className="text-gray-700 leading-relaxed">
-              Vytara uses cookies and similar technologies to:
+              G1 uses cookies and similar technologies to:
               Maintain user sessions and authentication,
               Improve platform performance and usability,
               Remember user preferences.
@@ -402,7 +402,7 @@ return (
           <div className="md:col-span-1">
             <div className="flex gap-2 items-center mb-4">
               <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-              <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+              <p className="font-bold text-[#14b8a6] text-xl">G1</p>
             </div>
             <p className="text-gray-400 text-sm">
               Healthcare, beautifully reimagined. Your health. Your family. Your control.
@@ -413,7 +413,7 @@ return (
           <div className="md:col-span-1">
             <h3 className="font-semibold text-lg mb-4">Contact Us</h3>
             <div className="space-y-2 text-gray-400 text-sm">
-              <p>Email: hello@vytara.com</p>
+              <p>Email: hello@G1.com</p>
               <p>Phone: 09511701519</p>
               <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
             </div>
@@ -436,7 +436,7 @@ return (
           {/* BRAND */}
           <div className="flex gap-2 items-center">
             <div className="w-6 h-6 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-            <p className="font-bold text-[#14b8a6] text-lg">Vytara</p>
+            <p className="font-bold text-[#14b8a6] text-lg">G1</p>
           </div>
 
           {/* CONTACT US AND LEGAL SIDE BY SIDE */}
@@ -445,7 +445,7 @@ return (
             <div className="flex-1">
               <h3 className="font-semibold text-xs mb-1">Contact Us</h3>
               <div className="space-y-0.5 text-gray-400 text-xs">
-                <p>Email: hello@vytara.com</p>
+                <p>Email: hello@G1.com</p>
                 <p>Phone: 09511701519</p>
                 <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
               </div>
@@ -465,7 +465,7 @@ return (
         </div>
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center hidden md:block">
-          <p className="text-gray-400 text-sm">© {new Date().getFullYear()} Vytara. All rights reserved.</p>
+          <p className="text-gray-400 text-sm">© {new Date().getFullYear()} G1. All rights reserved.</p>
         </div>
       </div>
     </footer>

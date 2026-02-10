@@ -21,12 +21,12 @@ export default function Navbar() {
   ];
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('vytara_nav_collapsed');
+    const stored = window.localStorage.getItem('g1_nav_collapsed');
     if (stored) setCollapsed(stored === '1');
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem('vytara_nav_collapsed', collapsed ? '1' : '0');
+    window.localStorage.setItem('g1_nav_collapsed', collapsed ? '1' : '0');
   }, [collapsed]);
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export default function Navbar() {
       (_event, session) => {
         if (!session?.refresh_token) return;
         try {
-          const stored = window.localStorage.getItem("vytara_remembered_account");
+          const stored = window.localStorage.getItem("g1_remembered_account");
           if (!stored) return;
           const parsed = JSON.parse(stored) as {
             userId?: string;
@@ -72,7 +72,7 @@ export default function Navbar() {
           };
           if (parsed?.userId && parsed.userId === session.user.id) {
             window.localStorage.setItem(
-              "vytara_remembered_account",
+              "g1_remembered_account",
               JSON.stringify({
                 ...parsed,
                 refreshToken: session.refresh_token,
@@ -105,14 +105,14 @@ export default function Navbar() {
               <div className="w-full h-full bg-teal-600 rounded-full"></div>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-teal-200/70">Vytara</p>
+              <p className="text-xs uppercase tracking-[0.25em] text-teal-200/70">G1</p>
               <p className="text-sm font-semibold leading-tight">Patient Hub</p>
             </div>
           </button>
           <button
             onClick={async () => {
               try {
-                const stored = window.localStorage.getItem("vytara_remembered_account");
+                const stored = window.localStorage.getItem("g1_remembered_account");
                 if (stored) {
                   const parsed = JSON.parse(stored) as {
                     refreshToken?: string;
@@ -120,7 +120,7 @@ export default function Navbar() {
                   const { data } = await supabase.auth.getSession();
                   if (data.session?.refresh_token && parsed) {
                     window.localStorage.setItem(
-                      "vytara_remembered_account",
+                      "g1_remembered_account",
                       JSON.stringify({
                         ...parsed,
                         refreshToken: data.session.refresh_token,
@@ -184,7 +184,7 @@ export default function Navbar() {
               {!effectiveCollapsed && (
                 <div>
                   <p className="text-sm uppercase tracking-[0.25em] text-teal-200/70">
-                    Vytara
+                    G1
                   </p>
                   <p className="text-lg font-semibold leading-tight">Patient Hub</p>
                 </div>
@@ -234,7 +234,7 @@ export default function Navbar() {
           <button
             onClick={async () => {
               try {
-                const stored = window.localStorage.getItem("vytara_remembered_account");
+                const stored = window.localStorage.getItem("g1_remembered_account");
                 if (stored) {
                   const parsed = JSON.parse(stored) as {
                     refreshToken?: string;
@@ -242,7 +242,7 @@ export default function Navbar() {
                   const { data } = await supabase.auth.getSession();
                   if (data.session?.refresh_token && parsed) {
                     window.localStorage.setItem(
-                      "vytara_remembered_account",
+                      "g1_remembered_account",
                       JSON.stringify({
                         ...parsed,
                         refreshToken: data.session.refresh_token,

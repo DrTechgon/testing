@@ -409,7 +409,7 @@ export default function HealthOnboardingChatbot() {
           <div>
             <div style={styles.kicker}>Health Setup</div>
             <h1 style={styles.title}>Welcome, let’s build your profile.</h1>
-            <p style={styles.subtitle}>This helps Vytara organize your medical history securely.</p>
+            <p style={styles.subtitle}>This helps G1 organize your medical history securely.</p>
           </div>
 
           <span style={styles.badge}>{isSaved ? "Saved" : isComplete ? "Review" : "In Progress"}</span>
@@ -438,7 +438,7 @@ export default function HealthOnboardingChatbot() {
                     ...(msg.role === "user" ? styles.userBubble : styles.botBubble),
                   }}
                 >
-                  <div style={styles.bubbleMeta}>{msg.role === "user" ? "You" : "Vytara"}</div>
+                  <div style={styles.bubbleMeta}>{msg.role === "user" ? "You" : "G1"}</div>
                   <div>{msg.text}</div>
                 </div>
               ))}

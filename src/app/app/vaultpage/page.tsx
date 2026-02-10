@@ -43,7 +43,7 @@
 // //             <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-teal-600 rounded-lg flex items-center justify-center">
 // //               <div className="text-white text-xl">★</div>
 // //             </div>
-// //             <h1 className="text-xl font-semibold text-gray-800">Vytara - Vault</h1>
+// //             <h1 className="text-xl font-semibold text-gray-800">G1 - Vault</h1>
 // //           </div>
 // //           <div className="flex items-center gap-3">
 // //             <button className="flex items-center gap-2 px-5 py-2.5 bg-teal-100 text-teal-700 rounded-full font-medium">
@@ -169,7 +169,7 @@
 // //         </div>
 
 // //         <div className="mt-12 text-center">
-// //           <p className="text-gray-400 text-sm">© 2025 Vytara. All rights reserved</p>
+// //           <p className="text-gray-400 text-sm">© 2025 G1. All rights reserved</p>
 // //         </div>
 // //         {openReports && (
 // //           <Modal onClose={() => setOpenReports(false)}>
@@ -316,7 +316,7 @@
 //       {/* <header className="bg-gradient-to-r from-teal-700 to-teal-500 shadow-md">
 //         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
 //           <h1 className="text-xl font-semibold text-white">
-//             Vytara – Vault
+//             G1 – Vault
 //           </h1>
 //           <div className="flex gap-3">
 //             <button className="flex items-center gap-2 px-5 py-2 bg-white/20 text-white rounded-full backdrop-blur">

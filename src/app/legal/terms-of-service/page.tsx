@@ -20,7 +20,7 @@ const TermsAndConditions = () => {
           {/* LOGO */}
           <div className="flex gap-2 items-center md:justify-start">
             <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-            <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+            <p className="font-bold text-[#14b8a6] text-xl">G1</p>
           </div>
 
           {/* DESKTOP NAV CENTER */}
@@ -82,12 +82,12 @@ const TermsAndConditions = () => {
           <section>
             <p className="text-gray-800 leading-relaxed">
               These terms of use ("
-              <span className="font-semibold">Terms</span>") govern your use of the websites, subdomains, products, and services Vytara Ltd or it's affiliates ("
-              <span className="font-semibold">Vytara</span>","
+              <span className="font-semibold">Terms</span>") govern your use of the websites, subdomains, products, and services G1 Ltd or it's affiliates ("
+              <span className="font-semibold">G1</span>","
               <span className="font-semibold">us</span>", "
               <span className="font-semibold">our</span>", and "
-              <span className="font-semibold">we</span>"), including, without limitation, your use of www.vytara.com, any other Vytara websites, and any mobile applications made available to you by Vytara (collectively, the "
-              <span className="font-semibold">Services</span>"). Vytara owns all right, title and interest in and to our Services, including all intellectual property rights, and any suggestions, ideas or other feedback provided by you to us relating to our Services. We will solely and exclusively own any copy, modification, revision, enhancement, adaptation, translation, or derivative work of or created from our Services. As between you and us, we own any and all patent rights, copyrights, trade secret rights, trademark rights, and all other proprietary rights relating to our Services. Except for that information which is in the public domain, meaning such information exists in a location other than on our website behind registration, you may not copy, modify, publish, transmit, distribute, or sell any of our proprietary information without express written permission. Certain features of the Services may be subject to additional guidelines, terms, or rules, which may be additionally shared when engaging with such features. All such additional terms, guidelines, and rules, including our Privacy Policy (as defined below), are incorporated by reference into these terms of use (together, these "
+              <span className="font-semibold">we</span>"), including, without limitation, your use of www.G1.com, any other G1 websites, and any mobile applications made available to you by G1 (collectively, the "
+              <span className="font-semibold">Services</span>"). G1 owns all right, title and interest in and to our Services, including all intellectual property rights, and any suggestions, ideas or other feedback provided by you to us relating to our Services. We will solely and exclusively own any copy, modification, revision, enhancement, adaptation, translation, or derivative work of or created from our Services. As between you and us, we own any and all patent rights, copyrights, trade secret rights, trademark rights, and all other proprietary rights relating to our Services. Except for that information which is in the public domain, meaning such information exists in a location other than on our website behind registration, you may not copy, modify, publish, transmit, distribute, or sell any of our proprietary information without express written permission. Certain features of the Services may be subject to additional guidelines, terms, or rules, which may be additionally shared when engaging with such features. All such additional terms, guidelines, and rules, including our Privacy Policy (as defined below), are incorporated by reference into these terms of use (together, these "
               <span className="font-semibold">Terms</span>").
             </p>
           </section>
@@ -105,7 +105,7 @@ const TermsAndConditions = () => {
           <section>
             <h2 className="text-2xl font-bold text-black mb-4">Why should you read these Terms?</h2>
             <p className="text-gray-800 leading-relaxed">
-              These Terms form a legally binding agreement between you and Vytara. By accessing or using the Services, you confirm that:
+              These Terms form a legally binding agreement between you and G1. By accessing or using the Services, you confirm that:
 
 You have read and understood these Terms
 
@@ -133,16 +133,16 @@ Liability and termination
           </section>
 
 
-          {/* 1. Information about Vytara and contact details */}
+          {/* 1. Information about G1 and contact details */}
           <section>
-            <h2 className="text-2xl font-bold text-black mb-4">1. Information about Vytara and contact details</h2>
+            <h2 className="text-2xl font-bold text-black mb-4">1. Information about G1 and contact details</h2>
             <p className="text-gray-800 leading-relaxed">
 <span className="font-semibold">•Who we are:</span>
-Vytara is a digital health technology platform providing AI-powered health insights and informational tools.
+G1 is a digital health technology platform providing AI-powered health insights and informational tools.
 
 <br /><span className="font-semibold">•How to contact us:</span>
 You may contact us at:
-📧 support@vytara.com
+📧 support@G1.com
  (replace when finalised)
 
 <br /><span className="font-semibold">•How we may contact you:</span>
@@ -192,7 +192,7 @@ You may request deletion of your account by contacting us. We reserve the right 
             <h2 className="text-2xl font-bold text-black mb-4">4. Access to the Services</h2>
             <p className="text-gray-800 leading-relaxed">
 <span className="font-semibold">•License:</span>
-Subject to these Terms, Vytara grants you a limited, non-exclusive, non-transferable, revocable, and non-commercial license to access and use the Services for personal use only.
+Subject to these Terms, G1 grants you a limited, non-exclusive, non-transferable, revocable, and non-commercial license to access and use the Services for personal use only.
 
 <br /><span className="font-semibold">•Restrictions:</span>
 You agree not to:
@@ -200,7 +200,7 @@ Commercially exploit the Services,
 Reverse engineer, decompile, or modify any part of the Services,
 Use the Services to create a competing product,
 Copy or redistribute content except as expressly permitted.
-All intellectual property rights not expressly granted remain with Vytara.
+All intellectual property rights not expressly granted remain with G1.
 
 <br /><span className="font-semibold">•Modifications and availability:</span>
 We may modify, suspend, or discontinue the Services at any time without liability to you.
@@ -213,8 +213,8 @@ We may modify, suspend, or discontinue the Services at any time without liabilit
           <section>
             <h2 className="text-2xl font-bold text-black mb-4">5. Nature of the Services (Medical Disclaimer)</h2>
             <p className="text-gray-800 leading-relaxed">
-              Vytara provides AI-generated health insights and informational content based on user-provided data.
-Vytara does not provide medical advice, diagnosis, or treatment. The Services are not a substitute for professional medical care. You should always seek advice from a qualified healthcare professional before making medical decisions.
+              G1 provides AI-generated health insights and informational content based on user-provided data.
+G1 does not provide medical advice, diagnosis, or treatment. The Services are not a substitute for professional medical care. You should always seek advice from a qualified healthcare professional before making medical decisions.
 No doctor-patient relationship is created through your use of the Services.</p>
           </section>    
 
@@ -225,10 +225,10 @@ No doctor-patient relationship is created through your use of the Services.</p>
             <h2 className="text-2xl font-bold text-black mb-4">6. User content</h2>
             <p className="text-gray-800 leading-relaxed">
 <span className="font-semibold">•User Content:</span> “User Content” means any and all information and content that a user submits to, or uses with, the Services (e.g., content in the user’s profile or postings, any Praise you may send in relation to the Services, any profile image you upload to your Account, or comments you may make when updating your “Check-In” status). You are solely responsible for your User Content. You assume all risks associated with use of your User Content in accordance with these Terms, including any reliance on its accuracy, completeness or usefulness by others, or any disclosure of your User Content that personally identifies you or any third party (for instance, when you send Praise to other users). Please note that “aggregated” and/or “anonymised” data are not “User Content”. We collect, use and share “aggregated” and “anonymised” data as defined and described in our Privacy Policy (detailed above).
-<br /><span className="font-semibold">•Confidentiality:</span> Vytara takes confidentiality extremely seriously and will keep User Data secure and confidential and shall procure that its personnel (including its officers, directors, staff and employees) shall keep User Data secure and confidential. Neither Vytara nor its personnel shall disclose User Data or any element of it to a third party except (1) where you provide express written consent; (2) to the extent that Vytara is compelled by law or regulation (in which circumstances Vytara will provide prompt notice to you so that you have reasonable opportunity to obtain a protective order or other remedy); (3) in relation to any feedback which you provide to Vytara about the operation of its services, in which case the User Data comprising feedback may be disclosed in accordance with the terms of the below section “Do not send us confidential information in Feedback”; and (4) in circumstances where you breach the terms set out below in relation to (i) “Protection of our reputation and third party rights” and (ii) “Protection of our systems”, we may disclose User Data to a third party but only to the extent that such disclosure of User Data is reasonable, proportionate and necessary in the circumstances to enforce our rights and such disclosure shall be strictly limited to the third parties set out below in “How might we enforce these Terms if you violate them?”.
+<br /><span className="font-semibold">•Confidentiality:</span> G1 takes confidentiality extremely seriously and will keep User Data secure and confidential and shall procure that its personnel (including its officers, directors, staff and employees) shall keep User Data secure and confidential. Neither G1 nor its personnel shall disclose User Data or any element of it to a third party except (1) where you provide express written consent; (2) to the extent that G1 is compelled by law or regulation (in which circumstances G1 will provide prompt notice to you so that you have reasonable opportunity to obtain a protective order or other remedy); (3) in relation to any feedback which you provide to G1 about the operation of its services, in which case the User Data comprising feedback may be disclosed in accordance with the terms of the below section “Do not send us confidential information in Feedback”; and (4) in circumstances where you breach the terms set out below in relation to (i) “Protection of our reputation and third party rights” and (ii) “Protection of our systems”, we may disclose User Data to a third party but only to the extent that such disclosure of User Data is reasonable, proportionate and necessary in the circumstances to enforce our rights and such disclosure shall be strictly limited to the third parties set out below in “How might we enforce these Terms if you violate them?”.
 <br /><span className="font-semibold">•Privacy Policy:</span> You should also read these Terms in conjunction with our Privacy Policy (detailed above) which forms part of the Terms.
-<br /><span className="font-semibold">•How User Content cannot be used:</span> You confirm and promise to us: that your User Content does not and will not violate our Acceptable Use Policy (as defined below). You may not represent or imply to others that your User Content is in any way provided, sponsored or endorsed by Vytara. Because you alone are responsible for your User Content, you may expose yourself to liability if, for example, your User Content violates the Acceptable Use Policy.
-<br /><span className="font-semibold">•Backing up User Content:</span> Vytara is not obligated to backup any User Content, and your User Content may be deleted from the Services at any time without prior notice – accordingly we recommend you store and backup copies elsewhere. You are solely responsible for creating and maintaining your own backup copies of your User Content if you desire.
+<br /><span className="font-semibold">•How User Content cannot be used:</span> You confirm and promise to us: that your User Content does not and will not violate our Acceptable Use Policy (as defined below). You may not represent or imply to others that your User Content is in any way provided, sponsored or endorsed by G1. Because you alone are responsible for your User Content, you may expose yourself to liability if, for example, your User Content violates the Acceptable Use Policy.
+<br /><span className="font-semibold">•Backing up User Content:</span> G1 is not obligated to backup any User Content, and your User Content may be deleted from the Services at any time without prior notice – accordingly we recommend you store and backup copies elsewhere. You are solely responsible for creating and maintaining your own backup copies of your User Content if you desire.
             <br></br></p>
           </section>
 
@@ -237,7 +237,7 @@ No doctor-patient relationship is created through your use of the Services.</p>
           <section>
             <h2 className="text-2xl font-bold text-black mb-4">7. Third-party services and links</h2>
             <p className="text-gray-800 leading-relaxed">
-              The Services may contain links to third-party websites or services. Vytara does not control or endorse these third parties and is not responsible for their content or practices. Your use of third-party services is at your own risk.
+              The Services may contain links to third-party websites or services. G1 does not control or endorse these third parties and is not responsible for their content or practices. Your use of third-party services is at your own risk.
               </p>
           </section>   
 
@@ -247,11 +247,11 @@ No doctor-patient relationship is created through your use of the Services.</p>
             <h2 className="text-2xl font-bold text-black mb-4">6. User content</h2>
             <p className="text-gray-800 leading-relaxed">
 <span className="font-semibold">•Our Services are not bespoke to you.</span> You acknowledge that the Services provided are not developed to meet your individual requirements, and that it is therefore your responsibility to ensure that the facilities and functions of the Services meet your requirements.
-Vytara<br /><span className="font-semibold">•Any advice or other materials made available through the Services are intended for general information purposes only.</span> We provide information via our Services, such as our Vytara Index and Check-In functionalities. The output from these does not constitute medical advice, diagnosis or treatment. They provide information to you based on information entered. They do not diagnose your own health condition or make treatment recommendations for you. They are not intended to be relied upon and are not a substitute for professional medical advice based on your individual condition and circumstances. The advice and other materials we make available are not intended to replace or supplement your healthcare providers’ guidance. You shouldn’t take or stop taking any action (such as taking medicines) based on information from our information services. You should always talk to a qualified medical professional about any questions you may have about a medical condition. If you think you have a medical emergency, you should call your doctor or the emergency services immediately. We make no promises and are not liable about the accuracy, completeness, or suitability for any purpose of the advice, other materials and information published as part of our Services. We make no warranties in relation to the output of our Services. If you contact us through the “Help” section available as part of our Services and correspond with a member of Vytara’s support department, please be aware that, unless they tell you otherwise, the people responding to your request for help are not doctors or professional medical advisors.
+G1<br /><span className="font-semibold">•Any advice or other materials made available through the Services are intended for general information purposes only.</span> We provide information via our Services, such as our G1 Index and Check-In functionalities. The output from these does not constitute medical advice, diagnosis or treatment. They provide information to you based on information entered. They do not diagnose your own health condition or make treatment recommendations for you. They are not intended to be relied upon and are not a substitute for professional medical advice based on your individual condition and circumstances. The advice and other materials we make available are not intended to replace or supplement your healthcare providers’ guidance. You shouldn’t take or stop taking any action (such as taking medicines) based on information from our information services. You should always talk to a qualified medical professional about any questions you may have about a medical condition. If you think you have a medical emergency, you should call your doctor or the emergency services immediately. We make no promises and are not liable about the accuracy, completeness, or suitability for any purpose of the advice, other materials and information published as part of our Services. We make no warranties in relation to the output of our Services. If you contact us through the “Help” section available as part of our Services and correspond with a member of G1’s support department, please be aware that, unless they tell you otherwise, the people responding to your request for help are not doctors or professional medical advisors.
 <br /><span className="font-semibold">•We are responsible to you only for foreseeable loss and damage caused by us.</span> If we fail to comply with these Terms, we are responsible for loss or damage you suffer that is a foreseeable result of our breaking these Terms or our failing to use reasonable care and skill, but we are not responsible for any loss or damage that is not foreseeable. Loss or damage is foreseeable if either it is obvious that it will happen or if, at the time these Terms are entered into both we and you knew it might happen.
 <br /><span className="font-semibold">•We are not liable for business losses.</span> As noted above, we only make our Services available for your domestic and private use. If you use the Services for any commercial, business or re-sale purpose we will have no liability to you for any loss of profit, loss of business, business interruption, or loss of business opportunity.
 <br /><span className="font-semibold">•No liability for User Content.</span> We do not control User Content, you acknowledge and agree that we are not responsible for any User Content, and in particular the content of any Praise, whether provided by you or by others. We make no guarantees regarding the accuracy, currency, suitability, or quality of any User Content.
-<br /><span className="font-semibold">•No liability for user interactions.</span> Your interactions with other users of the Services (for instance, through the use of Praise) are solely between you and such users. We do not control your interactions with other Users, you agree that Vytara will not be responsible for any loss or damage incurred as the result of any such interactions.
+<br /><span className="font-semibold">•No liability for user interactions.</span> Your interactions with other users of the Services (for instance, through the use of Praise) are solely between you and such users. We do not control your interactions with other Users, you agree that G1 will not be responsible for any loss or damage incurred as the result of any such interactions.
 <br /><span className="font-semibold">•No liability for damage caused by unauthorised access.</span> We will not be responsible for any loss or damage incurred as a result of unauthorised access to your Account which is not within our reasonable control,
 <br></br></p>
           </section>
@@ -274,7 +274,7 @@ Certain provisions will survive termination, including those relating to intelle
           <section>
             <h2 className="text-2xl font-bold text-black mb-4">10. Other important terms</h2>
             <p className="text-gray-800 leading-relaxed">
-•These Terms constitute the entire agreement between you and Vytara
+•These Terms constitute the entire agreement between you and G1
 <br />•If any provision is found unenforceable, the remaining provisions remain in effect
 <br />•We may transfer our rights and obligations under these Terms
 <br />•Our failure to enforce any provision does not waive our right to enforce it later</p>
@@ -286,8 +286,8 @@ Certain provisions will survive termination, including those relating to intelle
           <section>
             <h2 className="text-2xl font-bold text-black mb-4">Copyright and trademark notice</h2>
             <p className="text-gray-800 leading-relaxed">
-              © 2026 Vytara. All rights reserved.
-All trademarks, logos, and service marks displayed through the Services are the property of Vytara or their respective owners.
+              © 2026 G1. All rights reserved.
+All trademarks, logos, and service marks displayed through the Services are the property of G1 or their respective owners.
 </p>
           </section> 
 
@@ -309,7 +309,7 @@ All trademarks, logos, and service marks displayed through the Services are the 
             <div className="md:col-span-1">
               <div className="flex gap-2 items-center mb-4">
                 <div className="w-8 h-8 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-                <p className="font-bold text-[#14b8a6] text-xl">Vytara</p>
+                <p className="font-bold text-[#14b8a6] text-xl">G1</p>
               </div>
               <p className="text-gray-400 text-sm">
                 Healthcare, beautifully reimagined. Your health. Your family. Your control.
@@ -320,7 +320,7 @@ All trademarks, logos, and service marks displayed through the Services are the 
             <div className="md:col-span-1">
               <h3 className="font-semibold text-lg mb-4">Contact Us</h3>
               <div className="space-y-2 text-gray-400 text-sm">
-                <p>Email: hello@vytara.com</p>
+                <p>Email: hello@G1.com</p>
                 <p>Phone: 09511701519</p>
                 <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
               </div>
@@ -343,7 +343,7 @@ All trademarks, logos, and service marks displayed through the Services are the 
             {/* BRAND */}
             <div className="flex gap-2 items-center">
               <div className="w-6 h-6 bg-gradient-to-r from-[#14b8a6] to-[#134E4A] rounded-lg" />
-              <p className="font-bold text-[#14b8a6] text-lg">Vytara</p>
+              <p className="font-bold text-[#14b8a6] text-lg">G1</p>
             </div>
 
             {/* CONTACT US AND LEGAL SIDE BY SIDE */}
@@ -352,7 +352,7 @@ All trademarks, logos, and service marks displayed through the Services are the 
               <div className="flex-1">
                 <h3 className="font-semibold text-xs mb-1">Contact Us</h3>
                 <div className="space-y-0.5 text-gray-400 text-xs">
-                  <p>Email: hello@vytara.com</p>
+                  <p>Email: hello@G1.com</p>
                   <p>Phone: 09511701519</p>
                   <p>Address: 327, 3rd Floor, Ajmera Sikova, ICRC, Ghatkopar West, Mumbai 400086</p>
                 </div>
@@ -372,7 +372,7 @@ All trademarks, logos, and service marks displayed through the Services are the 
           </div>
 
           <div className="border-t border-gray-800 mt-8 pt-8 text-center hidden md:block">
-            <p className="text-gray-400 text-sm">© {new Date().getFullYear()} Vytara. All rights reserved.</p>
+            <p className="text-gray-400 text-sm">© {new Date().getFullYear()} G1. All rights reserved.</p>
           </div>
         </div>
       </footer>
