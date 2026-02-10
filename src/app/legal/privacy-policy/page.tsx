@@ -81,8 +81,8 @@ return (
 
         {/* DESKTOP NAV CENTER */}
         <div className="hidden md:flex gap-4 justify-center">
-          
-        
+
+
         </div>
 
         {/* RIGHT SIDE BUTTONS */}
@@ -106,7 +106,7 @@ return (
         <div className="bg-white shadow-md md:hidden z-[60]">
           {[
             ['Get Started', 'login'],
-            
+
             ['Contact', 'footer'],
           ].map(([t, id], index, array) => (
             <div key={id}>

@@ -4,45 +4,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const LOCAL_FLASK_API_URL = 'http://localhost:5000';
-const RENDER_FLASK_API_URL = 'https://testing-9obu.onrender.com';
-const DEFAULT_FLASK_API_URL =
-  process.env.NODE_ENV === 'production'
-    ? RENDER_FLASK_API_URL
-    : LOCAL_FLASK_API_URL;
+const FLASK_API_URL = process.env.NEXT_PUBLIC_CHATBOT_URL || 'http://localhost:8000';
 
-type FlaskProxyError = Error & { status?: number };
-
-function createProxyError(message: string, status: number): FlaskProxyError {
-  const error = new Error(message) as FlaskProxyError;
-  error.status = status;
-  return error;
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown error';
-}
-
-function normalizeBaseUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
-}
-
-function getCandidateBackendUrls(): string[] {
-  const isProd = process.env.NODE_ENV === 'production';
-  const candidates = [
-    process.env.BACKEND_URL,
-    process.env.NEXT_PUBLIC_BACKEND_URL,
-    DEFAULT_FLASK_API_URL,
-    RENDER_FLASK_API_URL,
-    ...(isProd ? [] : [LOCAL_FLASK_API_URL]),
-  ]
-    .filter((value): value is string => Boolean(value && value.trim()))
-    .map(normalizeBaseUrl);
-
-  return candidates.filter((url, index) => candidates.indexOf(url) === index);
-}
-
-async function callFlask(endpoint: string, method: string, body?: unknown) {
+async function callFlask(endpoint: string, method: string, body?: any) {
+  const url = `${FLASK_API_URL}${endpoint}`;
+  
+  console.log(`📡 [Next.js API] Calling Flask: ${method} ${url}`);
+  
   const options: RequestInit = {
     method,
     headers: { 'Content-Type': 'application/json' },

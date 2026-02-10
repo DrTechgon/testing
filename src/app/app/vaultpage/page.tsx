@@ -1,461 +1,3 @@
-// // "use client";
-
-// // import { 
-// //   FileText, Receipt, Activity, Shield, 
-// //   Upload, X, ChevronDown, Home, User, Folder,
-// // } from 'lucide-react';
-// // import { useEffect, useState } from 'react';
-// // import { supabase } from '@/lib/createClient';
-// // import { listMedicalFiles, uploadMedicalFile, getSignedUrl } from '@/lib/medicalStorage';
-// // import { MedicalFolder } from '@/constants/medicalFolders';
-// // import MedicalFolderModal from '@/components/vault/MedicalFolderModal';
-// // import Modal from "@/components/Modal";
-
-// // export default function StaticVaultPage() {
-// //   // Static placeholders since we are removing all logic/props
-// //   const [userId, setUserId] = useState<string | null>(null);
-// //   const [activeFolder, setActiveFolder] = useState<MedicalFolder>('reports');
-// //   const [files, setFiles] = useState<any[]>([]);
-// //   const [loading, setLoading] = useState(false);
-// //   const [openReports, setOpenReports] = useState(false);
-
-// //   useEffect(() => {
-// //     supabase.auth.getUser().then(async ({ data }) => {
-// //       if (!data.user) return;
-
-// //       setUserId(data.user.id);
-
-// //       const { data: files } = await listMedicalFiles(
-// //         data.user.id,
-// //         activeFolder
-// //       );
-
-// //       setFiles(files ?? []);
-// //     });
-// //   }, [activeFolder]);
-  
-// //   return (
-// //     <div className="min-h-screen bg-gray-50">
-// //       {/* Header */}
-// //       {/* <header className="bg-white shadow-sm">
-// //         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-// //           <div className="flex items-center gap-3">
-// //             <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-teal-600 rounded-lg flex items-center justify-center">
-// //               <div className="text-white text-xl">★</div>
-// //             </div>
-// //             <h1 className="text-xl font-semibold text-gray-800">G1 - Vault</h1>
-// //           </div>
-// //           <div className="flex items-center gap-3">
-// //             <button className="flex items-center gap-2 px-5 py-2.5 bg-teal-100 text-teal-700 rounded-full font-medium">
-// //               <Home className="w-4 h-4" />
-// //               Home
-// //             </button>
-// //             <button className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-full font-medium">
-// //               <User className="w-4 h-4" />
-// //               Profile
-// //             </button>
-// //           </div>
-// //         </div>
-// //       </header> */}
-
-// //       <main className="max-w-7xl mx-auto px-6 py-8">
-// //         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-// //           {/* Left Section - Documents */}
-// //           <div className="lg:col-span-2 space-y-6">
-// //             <div>
-// //               <label className="block text-gray-700 font-medium mb-3">Family Member</label>
-// //               <div className="relative">
-// //                 <select className="w-full px-4 py-3 rounded-xl border border-gray-200 appearance-none bg-white shadow-sm text-black outline-none">
-// //                   <option>👤 John Doe (Self)</option>
-// //                   <option>👤 Jane Doe</option>
-// //                 </select>
-// //                 <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-// //               </div>
-// //             </div>
-
-// //             <div>
-// //               <h2 className="text-2xl font-semibold text-gray-800 mb-6">My Documents</h2>
-              
-// //               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-// //                 {files.map((file) => (
-// //                   <div
-// //                     key={file.name}
-// //                     className="bg-white p-4 rounded-xl border hover:shadow-md"
-// //                   >
-// //                     <div className="w-full h-32 rounded-lg flex items-center justify-center mb-3 bg-teal-50">
-// //                       <FileText className="w-10 h-10 text-teal-600" />
-// //                     </div>
-
-// //                     <h3 className="text-sm font-medium truncate">
-// //                       {file.name}
-// //                     </h3>
-
-// //                     <p className="text-xs text-gray-500">
-// //                       {new Date(file.created_at).toLocaleDateString()}
-// //                     </p>
-
-                    
-// //                   </div>
-// //                 ))}
-
-// //                 {/* Static Example 1 */}
-// //                 {/* <div className="bg-white p-4 rounded-xl border border-gray-100 hover:shadow-md transition group relative">
-// //                   <button className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition">
-// //                     <X className="w-3 h-3" />
-// //                   </button>
-// //                   <div className="w-full h-32 rounded-lg flex items-center justify-center mb-3 bg-teal-50">
-                    
-// //                   </div>
-// //                   <h3 className="text-sm font-medium text-gray-800 mb-1 truncate"></h3>
-// //                   <p className="text-xs text-gray-500"></p>
-// //                 </div> */}
-
-// //                 {/* Static Example 2 */}
-// //                 {/* <div className="bg-white p-4 rounded-xl border border-gray-100 hover:shadow-md transition group relative">
-// //                   <button className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition">
-// //                     <X className="w-3 h-3" />
-// //                   </button>
-// //                   <div className="w-full h-32 rounded-lg flex items-center justify-center mb-3 bg-orange-50">
-// //                     <FileText className="w-12 h-12 text-orange-600" />
-// //                   </div>
-// //                   <h3 className="text-sm font-medium text-gray-800 mb-1 truncate">Physio Prescription</h3>
-// //                   <p className="text-xs text-gray-500">Dec 20, 2025</p>
-// //                 </div> */}
-
-// //                 {/* Static Example 3 */}
-// //                 {/* <div className="bg-white p-4 rounded-xl border border-gray-100 hover:shadow-md transition group relative">
-// //                   <button className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition">
-// //                     <X className="w-3 h-3" />
-// //                   </button>
-// //                   <div className="w-full h-32 rounded-lg flex items-center justify-center mb-3 bg-blue-50">
-// //                     <Shield className="w-12 h-12 text-blue-600" />
-// //                   </div>
-// //                   <h3 className="text-sm font-medium text-gray-800 mb-1 truncate">Insurance Policy.pdf</h3>
-// //                   <p className="text-xs text-gray-500">Nov 15, 2025</p>
-// //                 </div> */}
-// //               </div>
-// //             </div>
-// //           </div>
-
-// //           {/* Right Section - Sidebar Filters */}
-// //           <div className="space-y-4">
-// //             <h2 className="text-xl font-semibold text-gray-800 mb-4">
-// //               Filter by Type
-// //             </h2>
-
-// //             {[
-// //               { key: 'reports', label: 'Lab Reports', icon: Activity },
-// //               { key: 'prescriptions', label: 'Prescriptions', icon: FileText },
-// //               { key: 'bills', label: 'Bills', icon: Folder },
-// //               { key: 'insurance', label: 'Insurance', icon: Shield },
-// //             ].map(({ key, label, icon: Icon }) => (
-// //               <button
-// //                 key={key}
-// //                 className="w-full p-5 rounded-2xl border-2 border-teal-200 bg-white hover:border-teal-400 text-left"
-// //                 onClick={() => {
-// //                   setActiveFolder(key as MedicalFolder);
-// //                   setOpenReports(true);
-// //                 }}
-// //               >
-// //                 <div className="flex items-center gap-3">
-// //                   <Icon className="w-6 h-6 text-teal-600" />
-// //                   <span className="font-medium text-teal-700">{label}</span>
-// //                 </div>
-// //               </button>
-// //             ))}
-// //           </div>
-
-// //         </div>
-
-// //         <div className="mt-12 text-center">
-// //           <p className="text-gray-400 text-sm">© 2025 G1. All rights reserved</p>
-// //         </div>
-// //         {openReports && (
-// //           <Modal onClose={() => setOpenReports(false)}>
-// //             <MedicalFolderModal folder={activeFolder} />
-// //           </Modal>
-// //         )}
-// //       </main>
-// //     </div>
-// //   );
-// // }
-
-// 'use client';
-
-// import { useEffect, useState } from 'react';
-// import {
-//   FileText,
-//   Receipt,
-//   Activity,
-//   Shield,
-//   Upload,
-//   X,
-//   ChevronDown,
-//   Home,
-//   User,
-//   Folder,
-// } from 'lucide-react';
-
-// import { supabase } from '@/lib/createClient';
-// import { listMedicalFiles, uploadMedicalFile } from '@/lib/medicalStorage';
-// import { MedicalFolder } from '@/constants/medicalFolders';
-
-// type Category = 'lab-reports' | 'prescriptions' | 'insurance' | 'bills' | 'all';
-
-// type MedicalFile = {
-//   name: string;
-//   created_at: string;
-//   folder: MedicalFolder;
-// };
-
-// export default function VaultPage() {
-//   const [userId, setUserId] = useState<string | null>(null);
-//   const [files, setFiles] = useState<MedicalFile[]>([]);
-//   const [loading, setLoading] = useState(false);
-
-//   const [selectedCategory, setSelectedCategory] = useState<Category>('all');
-//   const [showUploadModal, setShowUploadModal] = useState(false);
-
-//   const [uploadData, setUploadData] = useState<{
-//     category: Category;
-//     file: File | null;
-//   }>({
-//     category: 'lab-reports',
-//     file: null,
-//   });
-
-//   /* ---------------- AUTH + FETCH ---------------- */
-
-//   useEffect(() => {
-//     supabase.auth.getUser().then(async ({ data }) => {
-//       if (!data.user) return;
-//       setUserId(data.user.id);
-//       fetchFiles(data.user.id, selectedCategory);
-//     });
-//   }, []);
-
-//   useEffect(() => {
-//     if (userId) fetchFiles(userId, selectedCategory);
-//   }, [selectedCategory]);
-
-//   const fetchFiles = async (uid: string, category: Category) => {
-//     setLoading(true);
-
-//     const folderMap: Record<Category, MedicalFolder[]> = {
-//       all: ['reports', 'prescriptions', 'insurance', 'bills'],
-//       'lab-reports': ['reports'],
-//       prescriptions: ['prescriptions'],
-//       insurance: ['insurance'],
-//       bills: ['bills'],
-//     };
-
-//     const results: MedicalFile[] = [];
-
-//     for (const folder of folderMap[category]) {
-//       const { data } = await listMedicalFiles(uid, folder);
-//       if (data) {
-//         results.push(
-//           ...data.map((f: any) => ({
-//             name: f.name,
-//             created_at: f.created_at,
-//             folder,
-//           }))
-//         );
-//       }
-//     }
-
-//     setFiles(
-//       results.sort(
-//         (a, b) =>
-//           new Date(b.created_at).getTime() -
-//           new Date(a.created_at).getTime()
-//       )
-//     );
-
-//     setLoading(false);
-//   };
-
-//   /* ---------------- UPLOAD ---------------- */
-
-//   const handleUpload = async (e: React.FormEvent) => {
-//     e.preventDefault();
-//     if (!userId || !uploadData.file) return;
-
-//     const folderMap: Record<Category, MedicalFolder> = {
-//       'lab-reports': 'reports',
-//       prescriptions: 'prescriptions',
-//       insurance: 'insurance',
-//       bills: 'bills',
-//       all: 'reports',
-//     };
-
-//     await uploadMedicalFile(
-//       userId,
-//       folderMap[uploadData.category],
-//       uploadData.file
-//     );
-
-//     setShowUploadModal(false);
-//     setUploadData({ category: 'lab-reports', file: null });
-//     fetchFiles(userId, selectedCategory);
-//   };
-
-//   /* ---------------- UI ---------------- */
-
-//   const categories = [
-//     { id: 'lab-reports', label: 'Lab Reports', icon: Activity },
-//     { id: 'prescriptions', label: 'Prescriptions', icon: FileText },
-//     { id: 'insurance', label: 'Insurance', icon: Shield },
-//     { id: 'bills', label: 'Bills & Receipts', icon: Receipt },
-//   ];
-
-//   return (
-//     <div className="min-h-screen bg-[#f4f7f8]">
-//       {/* HEADER */}
-//       {/* <header className="bg-gradient-to-r from-teal-700 to-teal-500 shadow-md">
-//         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-//           <h1 className="text-xl font-semibold text-white">
-//             G1 – Vault
-//           </h1>
-//           <div className="flex gap-3">
-//             <button className="flex items-center gap-2 px-5 py-2 bg-white/20 text-white rounded-full backdrop-blur">
-//               <Home className="w-4 h-4" /> Home
-//             </button>
-//             <button className="flex items-center gap-2 px-5 py-2 bg-white text-teal-700 rounded-full font-medium">
-//               <User className="w-4 h-4" /> Profile
-//             </button>
-//           </div>
-//         </div>
-//       </header> */}
-
-//       <main className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-3 gap-8">
-//         {/* LEFT */}
-//         <div className="lg:col-span-2 space-y-6">
-//           <button
-//             onClick={() => setShowUploadModal(true)}
-//             className="inline-flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-xl shadow hover:bg-teal-700"
-//           >
-//             + Upload New Document
-//           </button>
-
-//           <div>
-//             <h2 className="text-2xl font-semibold text-gray-800 mb-6">
-//               My Documents
-//             </h2>
-
-//             {files.length === 0 && !loading ? (
-//               <div className="bg-white border-2 border-dashed border-teal-300 rounded-2xl p-16 text-center">
-//                 <Upload className="w-16 h-16 mx-auto text-teal-600" />
-//                 <p className="mt-4 text-gray-600">
-//                   Upload your first document
-//                 </p>
-//               </div>
-//             ) : (
-//               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-//                 {files.map(file => (
-//                   <div
-//                     key={file.name}
-//                     className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition"
-//                   >
-//                     <div className="h-32 flex items-center justify-center bg-teal-100 rounded-lg mb-3">
-//                       <FileText className="w-10 h-10 text-teal-700" />
-//                     </div>
-//                     <p className="text-sm font-medium text-gray-800 truncate">
-//                       {file.name}
-//                     </p>
-//                     <p className="text-xs text-gray-500">
-//                       {new Date(file.created_at).toLocaleDateString()}
-//                     </p>
-//                   </div>
-//                 ))}
-//               </div>
-//             )}
-//           </div>
-//         </div>
-
-//         {/* RIGHT */}
-//         <div className="space-y-4">
-//           <h2 className="text-xl font-semibold text-gray-800">
-//             Filter by Type
-//           </h2>
-
-//           <button
-//             onClick={() => setSelectedCategory('all')}
-//             className={`w-full p-5 rounded-2xl border-2 text-gray-800 text-left ${
-//               selectedCategory === 'all'
-//                 ? 'border-teal-600 bg-teal-50'
-//                 : 'border-gray-200 bg-white'
-//             }`}
-//           >
-//             <Folder className="inline mr-2 text-teal-600" />
-//             All Documents
-//           </button>
-
-//           {categories.map(cat => (
-//             <button
-//               key={cat.id}
-//               onClick={() =>
-//                 setSelectedCategory(cat.id as Category)
-//               }
-//               className={`w-full p-5 rounded-2xl border-2 text-gray-800 text-left ${
-//                 selectedCategory === cat.id
-//                   ? 'border-teal-600 bg-teal-50'
-//                   : 'border-gray-200 bg-white'
-//               }`}
-//             >
-//               <cat.icon className="inline mr-2 text-teal-600" />
-//               {cat.label}
-//             </button>
-//           ))}
-//         </div>
-//       </main>
-
-//       {/* UPLOAD MODAL */}
-//       {showUploadModal && (
-//         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-//           <form
-//             onSubmit={handleUpload}
-//             className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-xl"
-//           >
-//             {/* CLOSE BUTTON */}
-//             <button
-//               type="button"
-//               onClick={() => setShowUploadModal(false)}
-//               className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 transition"
-//               aria-label="Close modal"
-//             >
-//               ✕
-//             </button>
-
-//             <h3 className="text-lg font-semibold mb-4 text-gray-800">
-//               Upload Document
-//             </h3>
-
-//             <input
-//               type="file"
-//               required
-//               onChange={e =>
-//                 setUploadData({
-//                   ...uploadData,
-//                   file: e.target.files?.[0] || null,
-//                 })
-//               }
-//               className="mb-4 text-gray-800"
-//             />
-
-//             <button
-//               type="submit"
-//               className="w-full py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition"
-//             >
-//               Upload
-//             </button>
-//           </form>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -549,20 +91,15 @@ export default function VaultPage() {
     category: Category;
     file: File | null;
     fileName: string;
+    uploading: boolean;
+    error: string | null;
   }>({
     category: 'lab-reports',
     file: null,
     fileName: '',
+    uploading: false,
+    error: null,
   });
-
-  const resetUploadData = () => {
-    setUploadData({ category: 'lab-reports', file: null, fileName: '' });
-  };
-
-  const handleCloseUploadModal = () => {
-    setShowUploadModal(false);
-    resetUploadData();
-  };
 
   /* ---------------- AUTH + FETCH ---------------- */
 
@@ -736,6 +273,9 @@ export default function VaultPage() {
       return;
     }
 
+    // Set uploading state
+    setUploadData((prev) => ({ ...prev, uploading: true, error: null }));
+
     const folderMap: Record<Category, MedicalFolder> = {
       'lab-reports': 'reports',
       prescriptions: 'prescriptions',
@@ -750,17 +290,37 @@ export default function VaultPage() {
     const finalBase = baseFromInput || fallbackBase;
     const finalName = originalExt ? `${finalBase}.${originalExt}` : finalBase;
 
-    await uploadMedicalFile(
-      userId,
-      folderMap[uploadData.category],
-      uploadData.file,
-      finalName
-    );
+    try {
+      const { error } = await uploadMedicalFile(
+        userId,
+        folderMap[uploadData.category],
+        uploadData.file,
+        finalName
+      );
 
-    setShowUploadModal(false);
-    resetUploadData();
-    fetchFiles(userId, selectedCategory);
-    fetchCounts(userId);
+      if (error) {
+        // Upload failed
+        setUploadData((prev) => ({
+          ...prev,
+          uploading: false,
+          error: error.message || 'Failed to upload file. Please try again.',
+        }));
+        return;
+      }
+
+      // Upload successful
+      setShowUploadModal(false);
+      setUploadData({ category: 'lab-reports', file: null, fileName: '', uploading: false, error: null });
+      fetchFiles(userId, selectedCategory);
+      fetchCounts(userId);
+    } catch (err: any) {
+      // Network or other error
+      setUploadData((prev) => ({
+        ...prev,
+        uploading: false,
+        error: err?.message || 'An error occurred during upload. Please try again.',
+      }));
+    }
   };
 
   const handleDelete = async (file: MedicalFile) => {
@@ -1041,7 +601,7 @@ export default function VaultPage() {
                     Sort
                   </button>
                   {sortMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg z-20">
+                    <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg z-20">
                       {[
                         { id: 'date-desc', label: 'Date created (newest)' },
                         { id: 'date-asc', label: 'Date created (oldest)' },
@@ -1090,7 +650,7 @@ export default function VaultPage() {
                     )}
                   </button>
                   {filterMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-lg z-20 p-3">
+                    <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white shadow-lg z-20 p-3">
                       <div className="space-y-1">
                         {[
                           { id: 'all', label: 'All time' },
@@ -1210,25 +770,31 @@ export default function VaultPage() {
 
             <div className="flex flex-col md:flex-row gap-6">
               {/* CATEGORY SIDEBAR */}
-              <div className="w-full md:w-56 flex-shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0">
-                {categories.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id as Category)}
-                    className={`w-48 md:w-full flex-shrink-0 flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200 ${
-                      selectedCategory === cat.id
-                        ? 'bg-teal-50 text-teal-700 border-2 border-teal-200 shadow-sm'
-                        : 'bg-white text-slate-600 border border-slate-100 hover:border-slate-200 hover:bg-slate-50'
-                    }`}
-                    data-testid={`category-${cat.id}`}
-                  >
-                    <cat.icon size={18} className={selectedCategory === cat.id ? 'text-teal-600' : 'text-slate-400'} />
-                    <span className="flex-1 font-medium text-sm">{cat.label}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${selectedCategory === cat.id ? 'bg-teal-200 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
-                      {cat.count}
-                    </span>
-                  </button>
-                ))}
+              <div className="w-full md:w-56 flex-shrink-0">
+                <div className="mb-2 flex items-center justify-between px-1 md:hidden">
+                  <p className="text-xs font-medium text-slate-500">Swipe to see all categories</p>
+                  <span className="text-xs text-teal-600">↔</span>
+                </div>
+                <div className="flex md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0 snap-x snap-mandatory">
+                  {categories.map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id as Category)}
+                      className={`w-48 md:w-full flex-shrink-0 flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200 snap-start ${
+                        selectedCategory === cat.id
+                          ? 'bg-teal-50 text-teal-700 border-2 border-teal-200 shadow-sm'
+                          : 'bg-white text-slate-600 border border-slate-100 hover:border-slate-200 hover:bg-slate-50'
+                      }`}
+                      data-testid={`category-${cat.id}`}
+                    >
+                      <cat.icon size={18} className={selectedCategory === cat.id ? 'text-teal-600' : 'text-slate-400'} />
+                      <span className="flex-1 font-medium text-sm">{cat.label}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${selectedCategory === cat.id ? 'bg-teal-200 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
+                        {cat.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* FILES GRID/LIST */}
@@ -1268,7 +834,7 @@ export default function VaultPage() {
                               data-menu={openMenuName === file.name ? file.name : undefined}
                             >
                               <button
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"
                                 onClick={() =>
                                   setOpenMenuName((prev) =>
                                     prev === file.name ? null : file.name
@@ -1301,7 +867,7 @@ export default function VaultPage() {
                           <p className="font-medium text-slate-800 text-sm truncate mb-1">{file.name}</p>
                           <p className="text-xs text-slate-400 mb-4">{new Date(file.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                           
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                          <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
                             <button
                               className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 text-xs font-medium transition"
                               onClick={() => handlePreview(file)}
@@ -1320,8 +886,68 @@ export default function VaultPage() {
                     })}
                   </div>
                 ) : (
-                  <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
-                    <table className="w-full min-w-[720px]">
+                  <>
+                    <div className="space-y-3 md:hidden">
+                      {sortedFiles.map((file, i) => {
+                        const Icon = getCategoryIcon(file.folder);
+                        return (
+                          <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4" data-testid={`file-list-card-${i}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${getCategoryColor(file.folder)} flex items-center justify-center`}>
+                                  <Icon size={16} className="text-white" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-slate-800 text-sm truncate">{file.name}</p>
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {new Date(file.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getCategoryBg(file.folder)} text-slate-700`}>
+                                {file.folder.charAt(0).toUpperCase() + file.folder.slice(1)}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-4 gap-2">
+                              <button
+                                className="p-2 rounded-lg text-slate-500 bg-slate-100 hover:bg-slate-200 transition disabled:opacity-50"
+                                onClick={() => handleRename(file)}
+                                disabled={renamingName === file.name}
+                                aria-label={`Rename ${file.name}`}
+                              >
+                                <Edit2 size={16} className="mx-auto" />
+                              </button>
+                              <button
+                                className="p-2 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition"
+                                onClick={() => handlePreview(file)}
+                                aria-label={`Preview ${file.name}`}
+                              >
+                                <Eye size={16} className="mx-auto" />
+                              </button>
+                              <button
+                                className="p-2 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition"
+                                onClick={() => handleDownload(file)}
+                                aria-label={`Download ${file.name}`}
+                              >
+                                <Download size={16} className="mx-auto" />
+                              </button>
+                              <button
+                                className="p-2 rounded-lg text-red-600 bg-red-50 hover:bg-red-100 transition disabled:opacity-50"
+                                onClick={() => handleDelete(file)}
+                                disabled={deletingName === file.name}
+                                aria-label={`Delete ${file.name}`}
+                              >
+                                <Trash2 size={16} className="mx-auto" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+                      <table className="w-full min-w-[720px]">
                       <thead className="bg-slate-50 border-b border-slate-100">
                         <tr>
                           <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
@@ -1389,8 +1015,9 @@ export default function VaultPage() {
                           );
                         })}
                       </tbody>
-                    </table>
-                  </div>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -1401,14 +1028,20 @@ export default function VaultPage() {
 
       {/* UPLOAD MODAL */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={handleCloseUploadModal}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => {
+          setShowUploadModal(false);
+          setUploadData({ category: 'lab-reports', file: null, fileName: '', uploading: false, error: null });
+        }}>
           <div
             onClick={(e) => e.stopPropagation()}
             className="relative bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl"
           >
             <button
               type="button"
-              onClick={handleCloseUploadModal}
+              onClick={() => {
+                setShowUploadModal(false);
+                setUploadData({ category: 'lab-reports', file: null, fileName: '', uploading: false, error: null });
+              }}
               className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
               aria-label="Close modal"
             >
@@ -1460,6 +1093,7 @@ export default function VaultPage() {
                         fileName: nextFile
                           ? stripExtension(nextFile.name)
                           : prev.fileName,
+                        error: null, // Clear error when file changes
                       }));
                     }}
                     className="hidden"
@@ -1501,11 +1135,18 @@ export default function VaultPage() {
                 )}
               </div>
 
+              {uploadData.error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                  <p className="font-medium">{uploadData.error}</p>
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full py-3.5 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-xl font-semibold shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40 hover:scale-[1.01] transition-all duration-200"
+                disabled={uploadData.uploading || !uploadData.file}
+                className="w-full py-3.5 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-xl font-semibold shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40 hover:scale-[1.01] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                Upload Document
+                {uploadData.uploading ? 'Uploading...' : 'Upload Document'}
               </button>
             </form>
           </div>

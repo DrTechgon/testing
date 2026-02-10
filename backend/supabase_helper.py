@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 import requests
 import hashlib
 import io
-from PIL import Image
 
 load_dotenv()
 
@@ -15,10 +14,10 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    raise ValueError("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in .env")
+    raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in .env")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-print(f"✅ Supabase client initialized: {SUPABASE_URL}")
+print(f"Supabase client initialized: {SUPABASE_URL}")
 
 BUCKET_NAME = "medical-vault"
 
@@ -159,22 +158,35 @@ def compute_structured_data_hash(structured_data) -> str:
 def save_extracted_data(user_id: str, file_path: str, file_name: str, 
                        folder_type: str, extracted_text: str, 
                        patient_name: str = None, report_date: str = None,
-                       structured_data_json=None, structured_data_hash: str = None,
-                       source_file_hash: str = None):
-    """Save extracted text to database"""
+                       age: str = None, gender: str = None, 
+                       report_type: str = None, doctor_name: str = None,
+                       hospital_name: str = None,
+                       name_match_status: str = 'pending',
+                       name_match_confidence: float = None):
+    """
+    Save extracted text and metadata to database
+    
+    NOTE: user_id is TEXT in your schema, not UUID
+    """
     print(f"\n💾 Saving to database: {file_name}")
     
     try:
         # Prepare data
         data = {
-            'user_id': user_id,
+            'user_id': str(user_id),  # Ensure it's TEXT
             'file_path': file_path,
             'file_name': file_name,
             'folder_type': folder_type,
             'extracted_text': extracted_text,
             'patient_name': patient_name,
             'report_date': report_date,
-            'source_file_hash': source_file_hash,
+            'age': age,
+            'gender': gender,
+            'report_type': report_type,
+            'doctor_name': doctor_name,
+            'hospital_name': hospital_name,
+            'name_match_status': name_match_status,
+            'name_match_confidence': name_match_confidence,
             'processing_status': 'completed',
             'processed_at': 'NOW()'
         }
@@ -219,16 +231,13 @@ def save_extracted_data(user_id: str, file_path: str, file_name: str,
         
         record_id = result.data[0]['id'] if result.data else None
         print(f"✅ Saved (ID: {record_id})")
-        print(f"   Patient: {patient_name or 'Unknown'}")
+        print(f"   Patient: {patient_name or 'Unknown'} ({age or 'N/A'}, {gender or 'N/A'})")
         print(f"   Date: {report_date or 'Unknown'}")
+        print(f"   Type: {report_type or 'Unknown'}")
+        print(f"   Doctor: {doctor_name or 'Unknown'}")
+        print(f"   Hospital: {hospital_name or 'Unknown'}")
+        print(f"   Name Match: {name_match_status} ({name_match_confidence or 'N/A'})")
         print(f"   Text length: {len(extracted_text)} characters")
-        print(f"   File hash: {(source_file_hash or 'N/A')[:16]}...")
-        if structured_payload is not None:
-            metric_count = (
-                len(structured_payload.get('metrics', []))
-                if isinstance(structured_payload, dict) else 0
-            )
-            print(f"   Structured metrics: {metric_count}")
         
         return record_id
         
@@ -238,12 +247,16 @@ def save_extracted_data(user_id: str, file_path: str, file_name: str,
 
 
 def get_processed_reports(user_id: str, folder_type: str = None):
-    """Get all processed reports for a user from database"""
+    """
+    Get all processed reports for a user from database
+    
+    NOTE: user_id is TEXT in your schema
+    """
     print(f"\n📊 Fetching processed reports for user: {user_id}")
     
     try:
         query = supabase.table('medical_reports_processed').select('*').eq(
-            'user_id', user_id
+            'user_id', str(user_id)  # Ensure it's TEXT
         ).eq('processing_status', 'completed')
         
         if folder_type:
@@ -254,7 +267,7 @@ def get_processed_reports(user_id: str, folder_type: str = None):
         
         print(f"✅ Retrieved {len(result.data)} reports")
         for r in result.data:
-            print(f"   • {r.get('file_name')} ({r.get('report_date') or 'No date'})")
+            print(f"   • {r.get('file_name')} ({r.get('folder_type')}) - {r.get('report_date') or 'No date'}")
         
         return result.data
         
@@ -271,12 +284,7 @@ def compute_signature_from_reports(reports: list) -> str:
             fp = r.get('file_path') or r.get('file_name') or ''
             text_len = len(r.get('extracted_text') or '')
             processed_at = r.get('processed_at') or ''
-            source_file_hash = r.get('source_file_hash') or ''
-            structured_hash = r.get('structured_data_hash') or ''
-            structured_at = r.get('structured_extracted_at') or ''
-            items.append(
-                f"{fp}|{text_len}|{processed_at}|{source_file_hash}|{structured_hash}|{structured_at}"
-            )
+            items.append(f"{fp}|{text_len}|{processed_at}")
 
         items.sort()
         concat = ";;".join(items)
@@ -290,14 +298,141 @@ def compute_signature_from_reports(reports: list) -> str:
         return ''
 
 
+def get_user_profile(user_id: str) -> dict:
+    """
+    Get user profile from database
+    
+    Args:
+        user_id: User ID (TEXT format)
+    
+    Returns:
+        Profile dict or None if not found
+    """
+    print(f"\n👤 Fetching user profile: {user_id}")
+    
+    try:
+        result = supabase.table('user_profiles').select('*').eq(
+            'user_id', str(user_id)
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            profile = result.data[0]
+            print(f"✅ Profile found: {profile.get('full_name')}")
+            return profile
+        else:
+            print(f"⚠️  No profile found for user: {user_id}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error fetching profile: {e}")
+        return None
+
+
+def create_user_profile(user_id: str, full_name: str, **kwargs) -> dict:
+    """
+    Create user profile
+    
+    Args:
+        user_id: User ID (TEXT format)
+        full_name: User's full name
+        **kwargs: Optional fields (email, phone, date_of_birth, gender)
+    
+    Returns:
+        Created profile dict
+    """
+    print(f"\n✨ Creating user profile for: {user_id}")
+    
+    try:
+        data = {
+            'user_id': str(user_id),
+            'full_name': full_name,
+            'email': kwargs.get('email'),
+            'phone': kwargs.get('phone'),
+            'date_of_birth': kwargs.get('date_of_birth'),
+            'gender': kwargs.get('gender'),
+            'created_at': 'NOW()'
+        }
+        
+        result = supabase.table('user_profiles').insert(data).execute()
+        
+        if result.data and len(result.data) > 0:
+            profile = result.data[0]
+            print(f"✅ Profile created: {profile.get('full_name')}")
+            return profile
+        else:
+            raise Exception("Profile creation returned no data")
+            
+    except Exception as e:
+        print(f"❌ Error creating profile: {e}")
+        raise
+
+
+def update_user_profile(user_id: str, **updates) -> dict:
+    """
+    Update user profile
+    
+    Args:
+        user_id: User ID (TEXT format)
+        **updates: Fields to update
+    
+    Returns:
+        Updated profile dict
+    """
+    print(f"\n🔄 Updating user profile: {user_id}")
+    
+    try:
+        result = supabase.table('user_profiles').update(updates).eq(
+            'user_id', str(user_id)
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            profile = result.data[0]
+            print(f"✅ Profile updated")
+            return profile
+        else:
+            raise Exception("No profile found to update")
+            
+    except Exception as e:
+        print(f"❌ Error updating profile: {e}")
+        raise
+
+
+def ensure_user_profile(user_id: str, default_name: str = None) -> dict:
+    """
+    Get profile or create if doesn't exist
+    
+    Args:
+        user_id: User ID (TEXT format)
+        default_name: Default name if creating new profile
+    
+    Returns:
+        Profile dict
+    """
+    profile = get_user_profile(user_id)
+    
+    if profile:
+        return profile
+    
+    # Create default profile if doesn't exist
+    if default_name:
+        print(f"⚠️  Creating default profile with name: {default_name}")
+        return create_user_profile(user_id, default_name)
+    else:
+        return None
+
+
 def save_summary_cache(user_id: str, folder_type: str, summary: str, 
                       report_count: int, reports_signature: str = None):
-    """Cache generated summary with signature"""
+    """
+    Cache generated summary with signature
+    
+    NOTE: user_id is TEXT in your schema
+    """
     print(f"\n💾 Caching summary for user: {user_id}")
     
     try:
         payload = {
-            'user_id': user_id,
+            'user_id': str(user_id),  # Ensure it's TEXT
             'folder_type': folder_type,
             'summary_text': summary,
             'report_count': report_count,
@@ -312,6 +447,7 @@ def save_summary_cache(user_id: str, folder_type: str, summary: str,
         
         print(f"✅ Summary cached")
         print(f"   Reports: {report_count}")
+        print(f"   Folder: {folder_type}")
         print(f"   Signature: {reports_signature[:16] if reports_signature else 'None'}...")
         
         return True
@@ -322,12 +458,16 @@ def save_summary_cache(user_id: str, folder_type: str, summary: str,
 
 
 def get_cached_summary(user_id: str, folder_type: str = None, expected_signature: str = None):
-    """Get cached summary if exists and is valid"""
+    """
+    Get cached summary if exists and is valid
+    
+    NOTE: user_id is TEXT in your schema
+    """
     print(f"\n🔍 Checking for cached summary...")
     
     try:
         query = supabase.table('medical_summaries_cache').select('*').eq(
-            'user_id', user_id
+            'user_id', str(user_id)  # Ensure it's TEXT
         )
 
         if folder_type:
@@ -350,6 +490,7 @@ def get_cached_summary(user_id: str, folder_type: str = None, expected_signature
             print(f"✅ Found valid cached summary")
             print(f"   Generated: {record.get('generated_at')}")
             print(f"   Reports: {record.get('report_count')}")
+            print(f"   Folder: {record.get('folder_type')}")
             
             return record
 
@@ -362,12 +503,16 @@ def get_cached_summary(user_id: str, folder_type: str = None, expected_signature
 
 
 def clear_user_cache(user_id: str, folder_type: str = None):
-    """Clear cached summaries for a user"""
+    """
+    Clear cached summaries for a user
+    
+    NOTE: user_id is TEXT in your schema
+    """
     print(f"\n🗑️  Clearing cache for user: {user_id}")
     
     try:
         query = supabase.table('medical_summaries_cache').delete().eq(
-            'user_id', user_id
+            'user_id', str(user_id)  # Ensure it's TEXT
         )
         
         if folder_type:
@@ -385,18 +530,22 @@ def clear_user_cache(user_id: str, folder_type: str = None):
 
 
 def clear_user_data(user_id: str):
-    """Clear all processed data for a user"""
+    """
+    Clear all processed data for a user
+    
+    NOTE: user_id is TEXT in your schema
+    """
     print(f"\n🗑️  Clearing ALL data for user: {user_id}")
     
     try:
         # Delete from processed reports
         result1 = supabase.table('medical_reports_processed').delete().eq(
-            'user_id', user_id
+            'user_id', str(user_id)  # Ensure it's TEXT
         ).execute()
         
         # Delete cached summaries
         result2 = supabase.table('medical_summaries_cache').delete().eq(
-            'user_id', user_id
+            'user_id', str(user_id)  # Ensure it's TEXT
         ).execute()
         
         deleted_count = len(result1.data) if result1.data else 0
@@ -429,6 +578,16 @@ def test_connection():
         print(f"   Database access: ✓")
         print(f"   Storage access: ✓")
         print(f"   Buckets found: {len(buckets)}")
+        
+        # Test if new columns exist
+        try:
+            test_query = supabase.table('medical_reports_processed').select(
+                'age,gender,report_type,name_match_status'
+            ).limit(1).execute()
+            print(f"   New columns available: ✓")
+        except Exception as e:
+            print(f"   ⚠️  New columns not yet added: {e}")
+        
         return True
         
     except Exception as e:
