@@ -1,3 +1,5 @@
+# backend/faq_data.py
+
 FAQS = [
     {
         "id": "login_mobile",

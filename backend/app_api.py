@@ -1139,5 +1139,5 @@ if __name__ == "__main__":
     print("  • No errors, always informative", flush=True)
     print("\n" + "="*80 + "\n", flush=True)
     
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 8000))
     app.run(debug=False, host="0.0.0.0", port=port)
