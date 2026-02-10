@@ -5,12 +5,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const FLASK_API_URL = process.env.NEXT_PUBLIC_CHATBOT_URL || 'http://localhost:8000';
+const DEFAULT_BACKEND_URLS = ['http://127.0.0.1:8000', 'http://localhost:8000'];
+const BACKEND_ENV_KEYS = [
+  'BACKEND_URL',
+  'NEXT_PUBLIC_BACKEND_URL',
+  'NEXT_PUBLIC_CHATBOT_URL',
+] as const;
 
-async function callFlask(endpoint: string, method: string, body?: any) {
-  const url = `${FLASK_API_URL}${endpoint}`;
-  
-  console.log(`📡 [Next.js API] Calling Flask: ${method} ${url}`);
-  
+type ProxyError = Error & { status?: number };
+
+const normalizeBaseUrl = (value: string) => value.replace(/\/+$/, '');
+
+function getCandidateBackendUrls() {
+  const envUrls = BACKEND_ENV_KEYS.map((key) => process.env[key])
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .map((value) => normalizeBaseUrl(value.trim()));
+
+  return Array.from(
+    new Set([
+      normalizeBaseUrl(FLASK_API_URL),
+      ...envUrls,
+      ...DEFAULT_BACKEND_URLS.map(normalizeBaseUrl),
+    ])
+  );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return 'Unknown error';
+}
+
+function createProxyError(message: string, status = 500) {
+  const error = new Error(message) as ProxyError;
+  error.status = status;
+  return error;
+}
+
+async function callFlask(endpoint: string, method: string, body?: unknown) {
   const options: RequestInit = {
     method,
     headers: { 'Content-Type': 'application/json' },

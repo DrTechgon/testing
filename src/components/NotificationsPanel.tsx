@@ -1,4 +1,3 @@
-//NotificationPanel.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -117,7 +116,22 @@ export function NotificationsPanel({
   const [now, setNow] = useState(() => new Date());
   const [dismissedInviteIds, setDismissedInviteIds] = useState<Set<string>>(() => new Set());
   const [dismissedAppointmentIds, setDismissedAppointmentIds] = useState<Set<string>>(() => new Set());
-  const [showMobileNotifications, setShowMobileNotifications] = useState(false);
+  const [dismissedFamilyNotificationIds, setDismissedFamilyNotificationIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [familyJoinRequests, setFamilyJoinRequests] = useState<FamilyJoinRequestNotification[]>(
+    []
+  );
+  const [familyAcceptance, setFamilyAcceptance] = useState<FamilyAcceptanceNotification | null>(
+    null
+  );
+  const [familyAppointments, setFamilyAppointments] = useState<FamilyAppointmentNotification[]>(
+    []
+  );
+  const [familyVaultUpdates, setFamilyVaultUpdates] = useState<FamilyVaultNotification[]>([]);
+  const [familyMedicationStarts, setFamilyMedicationStarts] = useState<
+    FamilyMedicationNotification[]
+  >([]);
 
   useEffect(() => {
     if (!userId || typeof window === "undefined") return;
@@ -640,169 +654,304 @@ export function NotificationsPanel({
       ? "w-full max-w-md h-[420px]"
       : "w-full max-w-sm h-[420px]";
 
-  const NotificationContent = () => (
-    <>
-      {notificationsLoading && totalNotifications === 0 ? (
-        <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
-          Checking for updates...
-        </div>
-      ) : notificationsError && totalNotifications === 0 ? (
-        <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-rose-600">
-          {notificationsError}
-        </div>
-      ) : totalNotifications === 0 ? (
-        <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
-          No notifications yet
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          {upcomingAppointments.map(({ appointment, dateTime }) => (
-            <button
-              key={`appointment-${appointment.id}`}
-              type="button"
-              onClick={() => {
-                setShowMobileNotifications(false);
-                router.push("/app/homepage");
-              }}
-              className="group relative w-full rounded-2xl border border-slate-100 bg-amber-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-            >
-              <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-amber-100" />
-              <span className="absolute right-2 top-2">
-                <span className="inline-flex rounded-full">
-                  <span
-                    role="button"
-                    aria-label="Dismiss appointment notification"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      dismissAppointment(appointment.id);
-                    }}
-                    className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                  >
-                    <X size={14} />
-                  </span>
-                </span>
-              </span>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
-                  <p className="text-xs text-slate-600">
-                    {appointment.title || appointment.type} · {dateTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                  </p>
-                </div>
-                <span className="text-[11px] text-slate-500">{formatTimeUntil(dateTime)}</span>
-              </div>
-            </button>
-          ))}
-          {visibleCareCircleInvites.map((invite) => (
-            <button
-              key={invite.id}
-              type="button"
-              onClick={() => {
-                setShowMobileNotifications(false);
-                router.push("/app/carecircle?open=incoming-invites");
-              }}
-              className="group relative w-full rounded-2xl border border-slate-100 bg-slate-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-            >
-              <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-slate-100" />
-              <span className="absolute right-2 top-2">
-                <span className="inline-flex rounded-full">
-                  <span
-                    role="button"
-                    aria-label="Dismiss care circle invite notification"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      dismissInvite(invite.id);
-                    }}
-                    className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                  >
-                    <X size={14} />
-                  </span>
-                </span>
-              </span>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">Care circle invite</p>
-                  <p className="text-xs text-slate-500">From {invite.name}</p>
-                </div>
-                <span className="text-[11px] text-slate-400">{formatInviteTimestamp(invite.createdAt)}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </>
-  );
-
   return (
-    <>
-      {/* Mobile Notification Button - First in button row */}
-      <button
-        type="button"
-        onClick={() => setShowMobileNotifications(true)}
-        className="lg:hidden relative flex items-center justify-center gap-2 px-8 py-4 rounded-3xl bg-teal-100 hover:bg-teal-200 transition shadow-sm"
-        aria-label="Open notifications"
-      >
-        <Bell size={22} className="text-teal-700" />
-        <span className="text-base font-semibold text-teal-700">Notifications</span>
-        {totalNotifications > 0 && (
-          <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-teal-600 text-[11px] font-bold text-white">
-            {totalNotifications > 9 ? "9+" : totalNotifications}
-          </span>
-        )}
-      </button>
-
-      {/* Mobile Notifications Modal */}
-      {showMobileNotifications && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowMobileNotifications(false)}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="absolute inset-x-4 top-4 bottom-4 bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden"
-          >
-            <div className="flex items-center justify-between px-6 py-5 border-b">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
-                  <Bell size={18} className="text-teal-600" />
-                </div>
-                <h3 className="font-bold text-lg">Notifications</h3>
-                {totalNotifications > 0 && (
-                  <span className="rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
-                    {totalNotifications} new
-                  </span>
-                )}
-              </div>
+    <div className={wrapperClassName}>
+      <div className={`bg-white rounded-3xl shadow-lg transition border flex flex-col ${panelClassName}`}>
+        <div className="flex items-center gap-3 px-6 py-5 border-b">
+          <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+            <Bell size={18} className="text-teal-600" />
+          </div>
+          <h3 className="font-bold text-lg">Notifications</h3>
+          {totalNotifications > 0 && (
+            <span className="ml-auto rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
+              {totalNotifications} new
+            </span>
+          )}
+        </div>
+        {isLoading && totalNotifications === 0 ? (
+          <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
+            Checking for updates...
+          </div>
+        ) : notificationError && totalNotifications === 0 ? (
+          <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-rose-600">
+            {notificationError}
+          </div>
+        ) : totalNotifications === 0 ? (
+          <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
+            No notifications yet
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            {upcomingAppointments.map(({ appointment, dateTime }) => (
               <button
+                key={`appointment-${appointment.id}`}
                 type="button"
-                onClick={() => setShowMobileNotifications(false)}
-                className="p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
-                aria-label="Close notifications"
+                onClick={() => router.push("/app/homepage")}
+                className="group relative w-full rounded-2xl border border-slate-100 bg-amber-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
               >
-                <X size={20} />
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-amber-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss appointment notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissAppointment(appointment.id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
+                    <p className="text-xs text-slate-600">
+                      {appointment.title || appointment.type} · {dateTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-500">{formatTimeUntil(dateTime)}</span>
+                </div>
               </button>
-            </div>
-            <NotificationContent />
+            ))}
+            {visibleFamilyJoinRequests.map((request) => (
+              <button
+                key={request.id}
+                type="button"
+                onClick={() => router.push("/app/family?open=join-requests")}
+                className="group relative w-full rounded-2xl border border-slate-100 bg-indigo-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-indigo-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss family join request notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissFamilyNotification(request.id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Family join request</p>
+                    <p className="text-xs text-slate-500">
+                      {request.requesterName} wants to join
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {formatRelativeTimestamp(request.createdAt)}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {visibleFamilyAcceptance.map((acceptance) => (
+              <button
+                key={acceptance.id}
+                type="button"
+                onClick={() => router.push("/app/family")}
+                className="group relative w-full rounded-2xl border border-slate-100 bg-emerald-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-emerald-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss family acceptance notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissFamilyNotification(acceptance.id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Request approved</p>
+                    <p className="text-xs text-slate-500">
+                      You&apos;re now part of {acceptance.familyName}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {acceptance.createdAt
+                      ? formatRelativeTimestamp(acceptance.createdAt)
+                      : "Just now"}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {visibleFamilyAppointments.map(({ id, memberName, appointment, dateTime }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => router.push("/app/family")}
+                className="group relative w-full rounded-2xl border border-slate-100 bg-orange-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-orange-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss family appointment notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissFamilyNotification(id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
+                    <p className="text-xs text-slate-600">
+                      {memberName} · {appointment.title || appointment.type} ·{" "}
+                      {dateTime.toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    {formatTimeUntil(dateTime)}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {visibleFamilyVaultUpdates.map((file) => (
+              <button
+                key={file.id}
+                type="button"
+                onClick={() =>
+                  router.push(
+                    `/app/family?open=member-vault&memberId=${encodeURIComponent(
+                      file.memberId
+                    )}&tab=vault`
+                  )
+                }
+                className="group relative w-full rounded-2xl border border-slate-100 bg-blue-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-blue-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss vault notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissFamilyNotification(file.id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">New vault document</p>
+                    <p className="text-xs text-slate-500">
+                      {file.memberName} added {file.fileName} · {vaultFolderLabels[file.folder]}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {formatRelativeTimestamp(file.createdAt)}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {visibleFamilyMedicationStarts.map((medication) => (
+              <button
+                key={medication.id}
+                type="button"
+                onClick={() => router.push("/app/family")}
+                className="group relative w-full rounded-2xl border border-slate-100 bg-green-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-green-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss medication notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissFamilyNotification(medication.id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">New medication started</p>
+                    <p className="text-xs text-slate-500">
+                      {medication.memberName} started {medication.medicationName}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {formatStartDate(medication.startDate)}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {visibleCareCircleInvites.map((invite) => (
+              <button
+                key={invite.id}
+                type="button"
+                onClick={() => router.push("/app/carecircle?open=incoming-invites")}
+                className="group relative w-full rounded-2xl border border-slate-100 bg-slate-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-slate-100" />
+                <span className="absolute right-2 top-2">
+                  <span className="inline-flex rounded-full">
+                    <span
+                      role="button"
+                      aria-label="Dismiss care circle invite notification"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissInvite(invite.id);
+                      }}
+                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  </span>
+                </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Care circle invite</p>
+                    <p className="text-xs text-slate-500">From {invite.name}</p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {formatRelativeTimestamp(invite.createdAt)}
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* Desktop Notification Panel */}
-      <div className="hidden lg:flex justify-end">
-        <div className="bg-white rounded-3xl shadow-lg transition border w-full max-w-sm h-[420px] flex flex-col">
-          <div className="flex items-center gap-3 px-6 py-5 border-b">
-            <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
-              <Bell size={18} className="text-teal-600" />
-            </div>
-            <h3 className="font-bold text-lg">Notifications</h3>
-            {totalNotifications > 0 && (
-              <span className="ml-auto rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
-                {totalNotifications} new
-              </span>
-            )}
-          </div>
-          <NotificationContent />
-        </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
