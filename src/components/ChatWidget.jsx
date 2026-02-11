@@ -62,7 +62,7 @@ export default function ChatWidget() {
         {/* Header */}
         <div className={styles.header}>
           <div>
-            <strong>Vytara Assistant</strong>
+            <strong>G1 Assistant</strong>
             <span>Healthcare Support</span>
           </div>
           <button onClick={() => setOpen(false)}>✕</button>
