@@ -6,7 +6,28 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Themed';
+import { apiRequest } from '@/api/client';
+import { isApiError } from '@/api/types/errors';
 import { supabase } from '@/lib/supabase';
+
+type OtpSendResponse = {
+  sessionId?: string;
+};
+
+type OtpVerifyResponse = {
+  access_token?: string;
+  refresh_token?: string;
+};
+
+const getRequestErrorMessage = (error: unknown, fallback: string) => {
+  if (isApiError(error)) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState('');
@@ -15,6 +36,7 @@ export default function LoginScreen() {
   const [timer, setTimer] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [otpSessionId, setOtpSessionId] = useState('');
   const [rememberDevice, setRememberDevice] = useState(false);
   const otpRefs = useRef<Array<TextInput | null>>([]);
 
@@ -48,24 +70,37 @@ export default function LoginScreen() {
       setError('Please enter a valid 10-digit phone number.');
       return;
     }
-    setIsSubmitting(true);
-    const { error: signInError } = await supabase.auth.signInWithOtp({
-      phone: fullPhone,
-      options: {
-        shouldCreateUser: false,
-      },
-    });
-    setIsSubmitting(false);
 
-    if (signInError) {
-      setError(signInError.message);
-      return;
+    try {
+      setIsSubmitting(true);
+      const response = await apiRequest<OtpSendResponse>('/api/auth/otp/send', {
+        method: 'POST',
+        body: {
+          phone: fullPhone,
+          mode: 'login',
+        },
+      });
+
+      if (!response?.sessionId) {
+        setError('Failed to start OTP verification.');
+        return;
+      }
+
+      setOtpSessionId(response.sessionId);
+      setStep('otp');
+      setTimer(60);
+      setOtpDigits(Array(6).fill(''));
+      setTimeout(() => focusOtp(0), 50);
+    } catch (requestError) {
+      setError(
+        getRequestErrorMessage(
+          requestError,
+          'Failed to send OTP. Please check the number and try again.'
+        )
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setStep('otp');
-    setTimer(60);
-    setOtpDigits(Array(6).fill(''));
-    setTimeout(() => focusOtp(0), 50);
   };
 
   const verifyOtp = async () => {
@@ -76,20 +111,44 @@ export default function LoginScreen() {
       return;
     }
 
-    setIsSubmitting(true);
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      phone: fullPhone,
-      token: otp,
-      type: 'sms',
-    });
-    setIsSubmitting(false);
-
-    if (verifyError) {
-      setError(verifyError.message || 'Invalid OTP. Please try again.');
+    if (!otpSessionId) {
+      setError('Please request a new OTP.');
       return;
     }
 
-    router.replace('/');
+    try {
+      setIsSubmitting(true);
+      const response = await apiRequest<OtpVerifyResponse>('/api/auth/otp/verify', {
+        method: 'POST',
+        body: {
+          phone: fullPhone,
+          otp,
+          sessionId: otpSessionId,
+          mode: 'login',
+        },
+      });
+
+      if (!response?.access_token || !response?.refresh_token) {
+        setError('Could not start session. Please try again.');
+        return;
+      }
+
+      const { data, error: sessionError } = await supabase.auth.setSession({
+        access_token: response.access_token,
+        refresh_token: response.refresh_token,
+      });
+
+      if (sessionError || !data?.user) {
+        setError(sessionError?.message || 'Could not start session.');
+        return;
+      }
+
+      router.replace('/');
+    } catch (requestError) {
+      setError(getRequestErrorMessage(requestError, 'Invalid OTP. Please try again.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
