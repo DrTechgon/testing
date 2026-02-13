@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Link, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -17,6 +17,13 @@ import {
   type RememberedAccount,
 } from '@/lib/rememberDevice';
 import { supabase } from '@/lib/supabase';
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  INDIA_PHONE_DIGITS,
+  PHONE_MAX_DIGITS,
+  type CountryOption,
+} from '@/lib/countries';
 
 type OtpSendResponse = {
   sessionId?: string;
@@ -53,6 +60,8 @@ const getRequestErrorMessage = (error: unknown, fallback: string) => {
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(''));
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [timer, setTimer] = useState(0);
@@ -64,7 +73,7 @@ export default function LoginScreen() {
   const [rememberedAccount, setRememberedAccount] = useState<RememberedAccount | null>(null);
   const otpRefs = useRef<Array<TextInput | null>>([]);
 
-  const fullPhone = useMemo(() => `+91${phone}`, [phone]);
+  const fullPhone = useMemo(() => `${selectedCountry.dialCode}${phone}`, [selectedCountry, phone]);
 
   useEffect(() => {
     if (timer <= 0) return;
@@ -187,8 +196,15 @@ export default function LoginScreen() {
 
   const sendOtp = async () => {
     setError(null);
-    if (phone.length !== 10) {
-      setError('Please enter a valid 10-digit phone number.');
+    const digitsOnly = phone.replace(/\D/g, '');
+    const isIndia = selectedCountry.code === 'IN';
+    const minLen = isIndia ? INDIA_PHONE_DIGITS : 10;
+    if (digitsOnly.length < minLen || digitsOnly.length > PHONE_MAX_DIGITS) {
+      setError(
+        isIndia
+          ? 'Please enter a valid 10-digit phone number.'
+          : 'Please enter a valid phone number (10–15 digits).'
+      );
       return;
     }
 
@@ -281,11 +297,12 @@ export default function LoginScreen() {
           });
 
           if (registerResponse?.deviceToken) {
+            const fullPhoneForSave = data.user.phone ?? fullPhone;
             await saveRememberedDevice(
               {
                 userId: data.user.id,
                 name: displayName,
-                phone,
+                phone: fullPhoneForSave,
                 email: data.user.email ?? null,
                 avatarUrl: null,
               },
@@ -294,7 +311,7 @@ export default function LoginScreen() {
             setRememberedAccount({
               userId: data.user.id,
               name: displayName,
-              phone,
+              phone: fullPhoneForSave,
               email: data.user.email ?? null,
               avatarUrl: null,
             });
@@ -343,7 +360,7 @@ export default function LoginScreen() {
         </View>
         <Text style={styles.title}>Login with Phone</Text>
         <Text style={styles.subtitle}>
-          {step === 'phone' ? 'We’ll send a one-time password' : `Enter the OTP sent to +91 ${phone}`}
+          {step === 'phone' ? 'We’ll send a one-time password' : `Enter the OTP sent to ${selectedCountry.dialCode} ${phone}`}
         </Text>
 
         {step === 'phone' && rememberedAccount ? (
@@ -358,7 +375,7 @@ export default function LoginScreen() {
                 <Text style={styles.rememberedLabel}>Saved account</Text>
                 <Text style={styles.rememberedName}>{rememberedAccount.name}</Text>
                 <Text style={styles.rememberedMeta}>
-                  {rememberedAccount.email?.trim() || `+91 ${rememberedAccount.phone}`}
+                  {rememberedAccount.email?.trim() || rememberedAccount.phone}
                 </Text>
               </View>
             </View>
@@ -388,18 +405,69 @@ export default function LoginScreen() {
 
         {step === 'phone' ? (
           <View style={styles.phoneRow}>
-            <View style={styles.countryCode}>
-              <Text style={styles.countryCodeText}>+91</Text>
-            </View>
+            <Pressable
+              style={styles.countryCode}
+              onPress={() => setCountryPickerVisible(true)}
+            >
+              <Text style={styles.countryCodeText}>{selectedCountry.dialCode}</Text>
+              <MaterialCommunityIcons name="chevron-down" size={16} color="#334155" />
+            </Pressable>
             <TextInput
               value={phone}
-              onChangeText={(value) => setPhone(value.replace(/\D/g, '').slice(0, 10))}
+              onChangeText={(value) => setPhone(value.replace(/\D/g, '').slice(0, PHONE_MAX_DIGITS))}
               placeholder="Phone number"
               keyboardType="number-pad"
               style={[styles.input, styles.phoneInput]}
               placeholderTextColor="#94a3b8"
-              maxLength={10}
+              maxLength={PHONE_MAX_DIGITS}
             />
+            <Modal
+              visible={countryPickerVisible}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setCountryPickerVisible(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => setCountryPickerVisible(false)}
+                />
+                <View style={styles.modalContent} pointerEvents="box-none">
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Select country</Text>
+                    <Pressable onPress={() => setCountryPickerVisible(false)} hitSlop={12}>
+                      <Text style={styles.modalClose}>Done</Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.countryListContainer}>
+                    <FlatList
+                      data={COUNTRIES}
+                      keyExtractor={(item) => item.code}
+                      style={styles.countryList}
+                      contentContainerStyle={styles.countryListContent}
+                      showsVerticalScrollIndicator={true}
+                      keyboardShouldPersistTaps="handled"
+                      renderItem={({ item }) => (
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.countryItem,
+                            pressed && styles.countryItemPressed,
+                          ]}
+                          onPress={() => {
+                            setSelectedCountry(item);
+                            setCountryPickerVisible(false);
+                          }}
+                        >
+                          <Text style={styles.countryItemText}>
+                            {item.name} ({item.dialCode})
+                          </Text>
+                        </Pressable>
+                      )}
+                    />
+                  </View>
+                </View>
+              </View>
+            </Modal>
           </View>
         ) : (
           <View style={styles.otpRow}>
@@ -639,10 +707,70 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
   },
   countryCodeText: {
     color: '#334155',
     fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '70%',
+    maxHeight: 500,
+    paddingBottom: 34,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#ffffff',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalClose: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#14b8a6',
+  },
+  countryListContainer: {
+    flex: 1,
+    minHeight: 0,
+    maxHeight: 360,
+  },
+  countryList: {
+    flex: 1,
+  },
+  countryListContent: {
+    paddingBottom: 24,
+  },
+  countryItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  countryItemPressed: {
+    backgroundColor: '#f0fdfa',
+  },
+  countryItemText: {
+    fontSize: 16,
+    color: '#334155',
   },
   input: {
     borderWidth: 2,

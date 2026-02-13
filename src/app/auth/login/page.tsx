@@ -10,9 +10,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { MoreVertical } from "lucide-react";
+import { ChevronDown, MoreVertical } from "lucide-react";
 import Plasma from "@/components/Plasma";
 import { supabase } from "@/lib/createClient";
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  INDIA_PHONE_DIGITS,
+  PHONE_MAX_DIGITS,
+  type CountryOption,
+} from "@/lib/countries";
 
 /* ========================= LOGIN PAGE ========================= */
 
@@ -29,6 +36,7 @@ const REMEMBERED_ACCOUNT_KEY = "vytara_remembered_account";
 export default function LoginPage() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(""));
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
@@ -39,9 +47,11 @@ export default function LoginPage() {
   const [rememberedAccount, setRememberedAccount] =
     useState<RememberedAccount | null>(null);
   const [rememberMenuOpen, setRememberMenuOpen] = useState(false);
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
   const [otpSessionId, setOtpSessionId] = useState("");
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
   const rememberMenuRef = useRef<HTMLDivElement | null>(null);
+  const countryDropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (timer <= 0) return;
@@ -73,7 +83,18 @@ export default function LoginPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [rememberMenuOpen]);
 
-  const formattedPhone = `+91${phone}`;
+  useEffect(() => {
+    if (!countryDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
+        setCountryDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [countryDropdownOpen]);
+
+  const formattedPhone = `${selectedCountry.dialCode}${phone}`;
 
   const resolveDisplayName = async (userId: string, fallback: string) => {
     const { data } = await supabase
@@ -140,8 +161,15 @@ export default function LoginPage() {
   const sendOtp = async () => {
     setError("");
 
-    if (phone.length !== 10) {
-      setError("Please enter a valid 10-digit phone number.");
+    const digitsOnly = phone.replace(/\D/g, "");
+    const isIndia = selectedCountry.code === "IN";
+    const minLen = isIndia ? INDIA_PHONE_DIGITS : 10;
+    if (digitsOnly.length < minLen || digitsOnly.length > PHONE_MAX_DIGITS) {
+      setError(
+        isIndia
+          ? "Please enter a valid 10-digit phone number."
+          : "Please enter a valid phone number (10–15 digits)."
+      );
       return;
     }
 
@@ -244,7 +272,7 @@ export default function LoginPage() {
         saveRememberedAccount({
           userId: data.user.id,
           name: displayName,
-          phone,
+          phone: data.user.phone ?? formattedPhone,
           email: data.user.email ?? null,
           avatarUrl: null,
         });
@@ -280,7 +308,7 @@ export default function LoginPage() {
             <p className="text-center text-gray-500 mb-8 text-sm">
               {step === "phone"
                 ? "We’ll send a one-time password"
-                : `Enter the OTP sent to +91 ${phone}`}
+                : `Enter the OTP sent to ${selectedCountry.dialCode} ${phone}`}
             </p>
 
             {rememberedAccount && (
@@ -309,7 +337,7 @@ export default function LoginPage() {
                         {rememberedAccount.name}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {rememberedAccount.email?.trim() || `+91 ${rememberedAccount.phone}`}
+                        {rememberedAccount.email?.trim() || rememberedAccount.phone}
                       </p>
                     </div>
                   </div>
@@ -359,9 +387,43 @@ export default function LoginPage() {
             >
               {step === "phone" && (
                 <>
-                  <div className="flex mb-4">
-                    <div className="flex items-center px-4 bg-gray-100 border-2 border-r-0 border-gray-100 rounded-l-xl text-gray-600 font-semibold">
-                      +91
+                  <div className="flex mb-4" ref={countryDropdownRef}>
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCountryDropdownOpen((v) => !v)}
+                        className="flex items-center gap-1 px-3 py-3 bg-gray-100 border-2 border-r-0 border-gray-100 rounded-l-xl text-gray-700 font-semibold text-sm hover:bg-gray-200 focus:border-[#14b8a6] focus:outline-none cursor-pointer min-w-[5.5rem]"
+                        aria-label="Country code"
+                        aria-expanded={countryDropdownOpen}
+                        aria-haspopup="listbox"
+                      >
+                        <span>{selectedCountry.dialCode}</span>
+                        <ChevronDown className={`w-4 h-4 transition-transform ${countryDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {countryDropdownOpen && (
+                        <div
+                          className="absolute left-0 top-full z-50 mt-1 w-64 bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden"
+                          role="listbox"
+                        >
+                          <div className="max-h-[280px] overflow-y-auto overscroll-contain py-1">
+                            {COUNTRIES.map((c) => (
+                              <button
+                                key={c.code}
+                                type="button"
+                                role="option"
+                                aria-selected={c.code === selectedCountry.code}
+                                onClick={() => {
+                                  setSelectedCountry(c);
+                                  setCountryDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none ${c.code === selectedCountry.code ? "bg-teal-50 text-[#0f766e] font-semibold" : "text-gray-700"}`}
+                              >
+                                {c.name} ({c.dialCode})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <input
                       type="tel"
@@ -369,11 +431,11 @@ export default function LoginPage() {
                       value={phone}
                       onChange={(e) => {
                         const digitsOnly = e.target.value.replace(/\D/g, "");
-                        if (digitsOnly.length <= 10) setPhone(digitsOnly);
+                        if (digitsOnly.length <= PHONE_MAX_DIGITS) setPhone(digitsOnly);
                       }}
-                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-r-xl focus:border-[#14b8a6] focus:bg-white focus:outline-none transition-all text-black"
-                  />
-                </div>
+                      className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-r-xl focus:border-[#14b8a6] focus:bg-white focus:outline-none transition-all text-black"
+                    />
+                  </div>
 
                 <label className="mb-4 flex items-center gap-2 text-sm text-gray-600">
                   <input

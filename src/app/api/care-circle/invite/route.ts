@@ -8,16 +8,21 @@ type InvitePayload = {
 };
 
 const normalizeContact = (value: string) => value.replace(/[^\d+]/g, '');
-const addIndiaCountryCode = (value: string) => {
-  const normalized = normalizeContact(value);
-  const digits = normalized.replace(/\D/g, '');
+
+/** Normalize to E.164: if already has + use it, else assume India for 10 digits. */
+const normalizeContactToE164 = (value: string): string => {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (trimmed.startsWith('+')) {
+    return `+${digits}`;
+  }
   if (digits.length === 10) {
     return `+91${digits}`;
   }
-  if (!normalized.startsWith('+') && digits.startsWith('91') && digits.length === 12) {
+  if (digits.startsWith('91') && digits.length === 12) {
     return `+${digits}`;
   }
-  return normalized;
+  return digits ? `+${digits}` : trimmed;
 };
 
 export async function POST(request: Request) {
@@ -105,7 +110,7 @@ export async function POST(request: Request) {
 
   if (!recipientId) {
     const normalized = normalizeContact(contact);
-    const withCountryCode = addIndiaCountryCode(contact);
+    const withCountryCode = normalizeContactToE164(contact);
     const variants = new Set<string>();
     if (contact) variants.add(contact);
     if (normalized) variants.add(normalized);

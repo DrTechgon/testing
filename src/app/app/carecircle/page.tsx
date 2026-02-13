@@ -1,8 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, UserPlus, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, ChevronRight, UserPlus, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/createClient';
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  INDIA_PHONE_DIGITS,
+  PHONE_MAX_DIGITS,
+  type CountryOption,
+} from '@/lib/countries';
 
 type CareCircleStatus = 'pending' | 'accepted' | 'declined';
 
@@ -118,6 +126,11 @@ export default function CareCirclePage() {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteContact, setInviteContact] = useState('');
+  const [inviteCountry, setInviteCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
+  const [inviteCountryDropdownOpen, setInviteCountryDropdownOpen] = useState(false);
+  const [inviteDropdownPosition, setInviteDropdownPosition] = useState({ top: 0, left: 0 });
+  const inviteCountryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const inviteCountryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [isSavingInvite, setIsSavingInvite] = useState(false);
   const [showMyPendingInvites, setShowMyPendingInvites] = useState(false);
@@ -317,6 +330,25 @@ export default function CareCirclePage() {
     loadCareCircle();
   }, [loadCareCircle]);
 
+  useEffect(() => {
+    if (!inviteCountryDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const inTrigger = inviteCountryDropdownRef.current?.contains(target);
+      const inPortal = document.getElementById('carecircle-invite-country-dropdown')?.contains(target);
+      if (!inTrigger && !inPortal) setInviteCountryDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [inviteCountryDropdownOpen]);
+
+  useEffect(() => {
+    if (!inviteCountryDropdownOpen || !inviteCountryTriggerRef.current) return;
+    const el = inviteCountryTriggerRef.current;
+    const rect = el.getBoundingClientRect();
+    setInviteDropdownPosition({ top: rect.bottom + 4, left: rect.left });
+  }, [inviteCountryDropdownOpen]);
+
   const handleRemove = async (memberId: string) => {
     if (!currentUserId) {
       return;
@@ -331,8 +363,20 @@ export default function CareCirclePage() {
 
   const handleInviteSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = inviteContact.trim();
-    if (!trimmed) {
+    const digitsOnly = inviteContact.replace(/\D/g, '');
+    if (!digitsOnly) {
+      setInviteError('Please enter a phone number.');
+      return;
+    }
+
+    const isIndia = inviteCountry.code === 'IN';
+    const minLen = isIndia ? INDIA_PHONE_DIGITS : 10;
+    if (digitsOnly.length < minLen || digitsOnly.length > PHONE_MAX_DIGITS) {
+      setInviteError(
+        isIndia
+          ? 'Please enter a valid 10-digit phone number.'
+          : 'Please enter a valid phone number (10–15 digits).'
+      );
       return;
     }
 
@@ -341,6 +385,7 @@ export default function CareCirclePage() {
       return;
     }
 
+    const fullContact = `${inviteCountry.dialCode}${digitsOnly}`;
     setIsSavingInvite(true);
     setInviteError(null);
 
@@ -349,7 +394,7 @@ export default function CareCirclePage() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ contact: trimmed }),
+      body: JSON.stringify({ contact: fullContact }),
     });
 
     if (!response.ok) {
@@ -360,6 +405,7 @@ export default function CareCirclePage() {
     }
 
     setInviteContact('');
+    setInviteCountry(DEFAULT_COUNTRY);
     setIsInviteOpen(false);
     setIsSavingInvite(false);
     await loadCareCircle();
@@ -1236,7 +1282,12 @@ export default function CareCirclePage() {
               </h2>
               <button
                 type="button"
-                onClick={() => setIsInviteOpen(false)}
+                onClick={() => {
+                  setIsInviteOpen(false);
+                  setInviteContact('');
+                  setInviteCountry(DEFAULT_COUNTRY);
+                  setInviteError(null);
+                }}
                 className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
                 aria-label="Close invite modal"
               >
@@ -1247,22 +1298,80 @@ export default function CareCirclePage() {
               Add a registered user by entering their phone number.
             </p>
             <form onSubmit={handleInviteSubmit} className="mt-4 space-y-4">
-              <label className="block text-sm font-medium text-slate-700">
-                Phone number
-                <input
-                  value={inviteContact}
-                  onChange={(event) => setInviteContact(event.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </label>
+              <div ref={inviteCountryDropdownRef} className="relative">
+                <label className="block text-sm font-medium text-slate-700">
+                  Phone number
+                </label>
+                <div className="mt-2 flex border border-slate-200 bg-white rounded-xl focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+                  <div className="relative shrink-0">
+                    <button
+                      ref={inviteCountryTriggerRef}
+                      type="button"
+                      onClick={() => setInviteCountryDropdownOpen((v) => !v)}
+                      className="flex items-center gap-1 px-3 py-2.5 bg-slate-100 border-r border-slate-200 rounded-l-xl text-slate-700 font-semibold text-sm hover:bg-slate-200 focus:outline-none min-w-[5.5rem]"
+                      aria-label="Country code"
+                      aria-expanded={inviteCountryDropdownOpen}
+                      aria-haspopup="listbox"
+                    >
+                      <span>{inviteCountry.dialCode}</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${inviteCountryDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {inviteCountryDropdownOpen &&
+                      createPortal(
+                        <div
+                          id="carecircle-invite-country-dropdown"
+                          className="fixed z-[9999] w-64 bg-white border-2 border-slate-200 rounded-xl shadow-xl overflow-hidden"
+                          role="listbox"
+                          style={{
+                            top: inviteDropdownPosition.top,
+                            left: inviteDropdownPosition.left,
+                          }}
+                        >
+                          <div className="max-h-[280px] overflow-y-auto overscroll-contain py-1">
+                            {COUNTRIES.map((c) => (
+                              <button
+                                key={c.code}
+                                type="button"
+                                role="option"
+                                aria-selected={c.code === inviteCountry.code}
+                                onClick={() => {
+                                  setInviteCountry(c);
+                                  setInviteCountryDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-100 focus:bg-slate-100 focus:outline-none ${c.code === inviteCountry.code ? 'bg-teal-50 text-teal-800 font-semibold' : 'text-slate-700'}`}
+                              >
+                                {c.name} ({c.dialCode})
+                              </button>
+                            ))}
+                          </div>
+                        </div>,
+                        document.body
+                      )}
+                  </div>
+                  <input
+                    type="tel"
+                    value={inviteContact}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, '');
+                      if (digitsOnly.length <= PHONE_MAX_DIGITS) setInviteContact(digitsOnly);
+                    }}
+                    placeholder="e.g., 9876543210"
+                    className="flex-1 min-w-0 px-3 py-2 text-sm text-slate-700 outline-none border-0 bg-white rounded-r-xl"
+                  />
+                </div>
+              </div>
               {inviteError && (
                 <p className="text-sm text-rose-600">{inviteError}</p>
               )}
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setIsInviteOpen(false)}
+                  onClick={() => {
+                    setIsInviteOpen(false);
+                    setInviteContact('');
+                    setInviteCountry(DEFAULT_COUNTRY);
+                    setInviteError(null);
+                  }}
                   className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel

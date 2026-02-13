@@ -1,5 +1,14 @@
 //EmergencyContactsModal.tsx
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronDown } from "lucide-react";
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  INDIA_PHONE_DIGITS,
+  PHONE_MAX_DIGITS,
+  type CountryOption,
+} from "@/lib/countries";
 
 export type EmergencyContact = {
   id: string;
@@ -21,25 +30,66 @@ export function EmergencyContactsModal({ data, onAdd, onDelete }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [relation, setRelation] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const countryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const countryTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!countryDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const inTrigger = countryDropdownRef.current?.contains(target);
+      const inPortal = document.getElementById("emergency-country-dropdown")?.contains(target);
+      if (!inTrigger && !inPortal) setCountryDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [countryDropdownOpen]);
+
+  useEffect(() => {
+    if (!countryDropdownOpen || !countryTriggerRef.current) return;
+    const el = countryTriggerRef.current;
+    const rect = el.getBoundingClientRect();
+    setDropdownPosition({
+      top: rect.bottom + 4,
+      left: rect.left,
+    });
+  }, [countryDropdownOpen]);
 
   const resetForm = () => {
     setName("");
     setPhone("");
     setRelation("");
+    setSelectedCountry(DEFAULT_COUNTRY);
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !phone.trim() || !relation.trim()) {
-      alert("Please enter a valid Name, Phone and Relation.");
+    if (!name.trim() || !relation.trim()) {
+      alert("Please enter a valid Name and Relation.");
       return;
     }
+    const digitsOnly = phone.replace(/\D/g, "");
+    const isIndia = selectedCountry.code === "IN";
+    const minLen = isIndia ? INDIA_PHONE_DIGITS : 10;
+    if (digitsOnly.length < minLen || digitsOnly.length > PHONE_MAX_DIGITS) {
+      alert(
+        isIndia
+          ? "Please enter a valid 10-digit phone number."
+          : "Please enter a valid phone number (10–15 digits)."
+      );
+      return;
+    }
+
+    const fullPhone = `${selectedCountry.dialCode}${digitsOnly}`;
 
     setSaving(true);
     try {
       await onAdd({
         id: "",
         name: name.trim(),
-        phone: phone.trim(),
+        phone: fullPhone,
         relation: relation.trim(),
       });
       resetForm();
@@ -78,15 +128,65 @@ export function EmergencyContactsModal({ data, onAdd, onDelete }: Props) {
               />
             </div>
 
-            <div>
+            <div ref={countryDropdownRef} className="relative">
               <label className="text-sm font-medium text-slate-700">Phone</label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                type="tel"
-                className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500 bg-white"
-                placeholder="e.g., 9876543210"
-              />
+              <div className="mt-2 flex border border-slate-200 bg-white rounded-xl focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+                <div className="relative shrink-0">
+                  <button
+                    ref={countryTriggerRef}
+                    type="button"
+                    onClick={() => setCountryDropdownOpen((v) => !v)}
+                    className="flex items-center gap-1 px-3 py-3 bg-slate-100 border-r border-slate-200 rounded-l-xl text-slate-700 font-semibold text-sm hover:bg-slate-200 focus:outline-none min-w-[5.5rem]"
+                    aria-label="Country code"
+                    aria-expanded={countryDropdownOpen}
+                    aria-haspopup="listbox"
+                  >
+                    <span>{selectedCountry.dialCode}</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${countryDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {countryDropdownOpen &&
+                    createPortal(
+                      <div
+                        id="emergency-country-dropdown"
+                        className="fixed z-[9999] w-64 bg-white border-2 border-slate-200 rounded-xl shadow-xl overflow-hidden"
+                        role="listbox"
+                        style={{
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                        }}
+                      >
+                        <div className="max-h-[280px] overflow-y-auto overscroll-contain py-1">
+                          {COUNTRIES.map((c) => (
+                            <button
+                              key={c.code}
+                              type="button"
+                              role="option"
+                              aria-selected={c.code === selectedCountry.code}
+                              onClick={() => {
+                                setSelectedCountry(c);
+                                setCountryDropdownOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-100 focus:bg-slate-100 focus:outline-none ${c.code === selectedCountry.code ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-700"}`}
+                            >
+                              {c.name} ({c.dialCode})
+                            </button>
+                          ))}
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                </div>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    const digitsOnly = e.target.value.replace(/\D/g, "");
+                    if (digitsOnly.length <= PHONE_MAX_DIGITS) setPhone(digitsOnly);
+                  }}
+                  className="flex-1 min-w-0 px-4 py-3 text-sm outline-none border-0 bg-white rounded-r-xl"
+                  placeholder="e.g., 9876543210"
+                />
+              </div>
             </div>
 
             <div>

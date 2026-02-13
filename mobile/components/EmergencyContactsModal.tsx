@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  FlatList,
   Modal,
   Pressable,
   ScrollView,
@@ -10,6 +11,14 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  INDIA_PHONE_DIGITS,
+  PHONE_MAX_DIGITS,
+  type CountryOption,
+} from '@/lib/countries';
 
 export type EmergencyContact = {
   id: string;
@@ -34,6 +43,8 @@ export function EmergencyContactsModal({ visible, contacts, onClose, onAdd, onDe
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [relation, setRelation] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -41,26 +52,42 @@ export function EmergencyContactsModal({ visible, contacts, onClose, onAdd, onDe
     setName('');
     setPhone('');
     setRelation('');
+    setSelectedCountry(DEFAULT_COUNTRY);
   }, [visible]);
 
   const resetForm = () => {
     setName('');
     setPhone('');
     setRelation('');
+    setSelectedCountry(DEFAULT_COUNTRY);
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !phone.trim() || !relation.trim()) {
-      Alert.alert('Missing info', 'Please enter a valid name, phone, and relation.');
+    if (!name.trim() || !relation.trim()) {
+      Alert.alert('Missing info', 'Please enter a valid name and relation.');
       return;
     }
+    const digitsOnly = phone.replace(/\D/g, '');
+    const isIndia = selectedCountry.code === 'IN';
+    const minLen = isIndia ? INDIA_PHONE_DIGITS : 10;
+    if (digitsOnly.length < minLen || digitsOnly.length > PHONE_MAX_DIGITS) {
+      Alert.alert(
+        'Invalid phone',
+        isIndia
+          ? 'Please enter a valid 10-digit phone number.'
+          : 'Please enter a valid phone number (10–15 digits).'
+      );
+      return;
+    }
+
+    const fullPhone = `${selectedCountry.dialCode}${digitsOnly}`;
 
     setSaving(true);
     try {
       await onAdd({
         id: createContactId(),
         name: name.trim(),
-        phone: phone.trim(),
+        phone: fullPhone,
         relation: relation.trim(),
       });
       resetForm();
@@ -117,14 +144,70 @@ export function EmergencyContactsModal({ visible, contacts, onClose, onAdd, onDe
                 </View>
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Phone</Text>
-                  <TextInput
-                    value={phone}
-                    onChangeText={setPhone}
-                    placeholder="e.g., 9876543210"
-                    placeholderTextColor="#9bb0b5"
-                    keyboardType="phone-pad"
-                    style={styles.input}
-                  />
+                  <View style={styles.phoneRow}>
+                    <Pressable
+                      style={styles.countryCodeButton}
+                      onPress={() => setCountryPickerVisible(true)}
+                    >
+                      <Text style={styles.countryCodeText}>{selectedCountry.dialCode}</Text>
+                      <MaterialCommunityIcons name="chevron-down" size={16} color="#39484c" />
+                    </Pressable>
+                    <TextInput
+                      value={phone}
+                      onChangeText={(value) => setPhone(value.replace(/\D/g, '').slice(0, PHONE_MAX_DIGITS))}
+                      placeholder="e.g., 9876543210"
+                      placeholderTextColor="#9bb0b5"
+                      keyboardType="phone-pad"
+                      style={[styles.input, styles.phoneInput]}
+                    />
+                  </View>
+                  <Modal
+                    visible={countryPickerVisible}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setCountryPickerVisible(false)}
+                  >
+                    <View style={styles.countryModalOverlay}>
+                      <Pressable
+                        style={StyleSheet.absoluteFill}
+                        onPress={() => setCountryPickerVisible(false)}
+                      />
+                      <View style={styles.countryModalContent} pointerEvents="box-none">
+                        <View style={styles.countryModalHeader}>
+                          <Text style={styles.countryModalTitle}>Select country</Text>
+                          <Pressable onPress={() => setCountryPickerVisible(false)} hitSlop={12}>
+                            <Text style={styles.countryModalDone}>Done</Text>
+                          </Pressable>
+                        </View>
+                        <View style={styles.countryListContainer}>
+                          <FlatList
+                            data={COUNTRIES}
+                            keyExtractor={(item) => item.code}
+                            style={styles.countryList}
+                            contentContainerStyle={styles.countryListContent}
+                            showsVerticalScrollIndicator={true}
+                            keyboardShouldPersistTaps="handled"
+                            renderItem={({ item }) => (
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.countryItem,
+                                  pressed && styles.countryItemPressed,
+                                ]}
+                                onPress={() => {
+                                  setSelectedCountry(item);
+                                  setCountryPickerVisible(false);
+                                }}
+                              >
+                                <Text style={styles.countryItemText}>
+                                  {item.name} ({item.dialCode})
+                                </Text>
+                              </Pressable>
+                            )}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  </Modal>
                 </View>
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Relation</Text>
@@ -263,6 +346,89 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: '#1f2f33',
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  countryCodeButton: {
+    minWidth: 70,
+    borderWidth: 1,
+    borderColor: '#d8e3e6',
+    backgroundColor: '#f0f4f5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  countryCodeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1f2f33',
+  },
+  phoneInput: {
+    flex: 1,
+  },
+  countryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  countryModalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '70%',
+    maxHeight: 500,
+    paddingBottom: 34,
+    overflow: 'hidden',
+  },
+  countryModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#ffffff',
+  },
+  countryModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  countryModalDone: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f766e',
+  },
+  countryListContainer: {
+    flex: 1,
+    minHeight: 0,
+    maxHeight: 360,
+  },
+  countryList: {
+    flex: 1,
+  },
+  countryListContent: {
+    paddingBottom: 24,
+  },
+  countryItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  countryItemPressed: {
+    backgroundColor: '#f0fdfa',
+  },
+  countryItemText: {
+    fontSize: 16,
+    color: '#334155',
   },
   primaryAction: {
     paddingVertical: 12,

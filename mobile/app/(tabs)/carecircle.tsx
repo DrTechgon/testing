@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  FlatList,
   Linking,
   Modal,
   Pressable,
@@ -32,6 +33,13 @@ import { Text } from '@/components/Themed';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/hooks/useAuth';
 import { careCircleApi } from '@/api/modules/carecircle';
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  INDIA_PHONE_DIGITS,
+  PHONE_MAX_DIGITS,
+  type CountryOption,
+} from '@/lib/countries';
 import { supabase } from '@/lib/supabase';
 
 type CareCircleStatus = 'pending' | 'accepted' | 'declined';
@@ -181,6 +189,8 @@ export default function CareCircleScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteContact, setInviteContact] = useState('');
+  const [inviteCountry, setInviteCountry] = useState<CountryOption>(DEFAULT_COUNTRY);
+  const [inviteCountryPickerVisible, setInviteCountryPickerVisible] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [isEmergencyOpen, setIsEmergencyOpen] = useState(false);
   const [emergencyCardOwner, setEmergencyCardOwner] = useState<{
@@ -344,17 +354,31 @@ export default function CareCircleScreen() {
   );
 
   const handleInvite = async () => {
-    if (!inviteContact.trim()) {
+    const digitsOnly = inviteContact.replace(/\D/g, '');
+    if (!digitsOnly) {
       Alert.alert('Invalid Input', 'Please enter a phone number.');
       return;
     }
+    const isIndia = inviteCountry.code === 'IN';
+    const minLen = isIndia ? INDIA_PHONE_DIGITS : 10;
+    if (digitsOnly.length < minLen || digitsOnly.length > PHONE_MAX_DIGITS) {
+      Alert.alert(
+        'Invalid phone',
+        isIndia
+          ? 'Please enter a valid 10-digit phone number.'
+          : 'Please enter a valid phone number (10–15 digits).'
+      );
+      return;
+    }
 
+    const fullContact = `${inviteCountry.dialCode}${digitsOnly}`;
     setInviting(true);
     try {
-      await careCircleApi.inviteByContact(inviteContact.trim());
+      await careCircleApi.inviteByContact(fullContact);
       Alert.alert('Success', 'Invitation sent successfully!');
       setInviteModalOpen(false);
       setInviteContact('');
+      setInviteCountry(DEFAULT_COUNTRY);
       await fetchLinks();
     } catch (err: any) {
       console.error('Failed to send invitation:', err);
@@ -893,6 +917,7 @@ export default function CareCircleScreen() {
                   onPress={() => {
                     setInviteModalOpen(false);
                     setInviteContact('');
+                    setInviteCountry(DEFAULT_COUNTRY);
                   }}
                 >
                   <MaterialCommunityIcons name="close" size={18} color="#475569" />
@@ -901,22 +926,77 @@ export default function CareCircleScreen() {
               <Text style={styles.sheetSubtitle}>
                 Enter a phone number to send an invitation
               </Text>
-              <TextInput
-                value={inviteContact}
-                onChangeText={setInviteContact}
-                placeholder="Phone number"
-                placeholderTextColor="#94a3b8"
-                style={styles.sheetInput}
-                autoCapitalize="none"
-                keyboardType="default"
-                autoCorrect={false}
-              />
+              <View style={styles.invitePhoneRow}>
+                <Pressable
+                  style={styles.inviteCountryCode}
+                  onPress={() => setInviteCountryPickerVisible(true)}
+                >
+                  <Text style={styles.inviteCountryCodeText}>{inviteCountry.dialCode}</Text>
+                  <MaterialCommunityIcons name="chevron-down" size={16} color="#39484c" />
+                </Pressable>
+                <TextInput
+                  value={inviteContact}
+                  onChangeText={(value) => setInviteContact(value.replace(/\D/g, '').slice(0, PHONE_MAX_DIGITS))}
+                  placeholder="Phone number"
+                  placeholderTextColor="#94a3b8"
+                  style={[styles.sheetInput, styles.invitePhoneInput]}
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <Modal
+                visible={inviteCountryPickerVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setInviteCountryPickerVisible(false)}
+              >
+                <View style={styles.countryModalOverlay}>
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => setInviteCountryPickerVisible(false)}
+                  />
+                  <View style={styles.countryModalContent} pointerEvents="box-none">
+                    <View style={styles.countryModalHeader}>
+                      <Text style={styles.countryModalTitle}>Select country</Text>
+                      <Pressable onPress={() => setInviteCountryPickerVisible(false)} hitSlop={12}>
+                        <Text style={styles.countryModalDone}>Done</Text>
+                      </Pressable>
+                    </View>
+                    <View style={styles.countryListContainer}>
+                      <FlatList
+                        data={COUNTRIES}
+                        keyExtractor={(item) => item.code}
+                        style={styles.countryList}
+                        contentContainerStyle={styles.countryListContent}
+                        showsVerticalScrollIndicator
+                        keyboardShouldPersistTaps="handled"
+                        renderItem={({ item }) => (
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.countryItem,
+                              pressed && styles.countryItemPressed,
+                            ]}
+                            onPress={() => {
+                              setInviteCountry(item);
+                              setInviteCountryPickerVisible(false);
+                            }}
+                          >
+                            <Text style={styles.countryItemText}>
+                              {item.name} ({item.dialCode})
+                            </Text>
+                          </Pressable>
+                        )}
+                      />
+                    </View>
+                  </View>
+                </View>
+              </Modal>
               <View style={styles.sheetActions}>
                 <AnimatedButton
                   style={styles.secondaryButton}
                   onPress={() => {
                     setInviteModalOpen(false);
                     setInviteContact('');
+                    setInviteCountry(DEFAULT_COUNTRY);
                   }}
                 >
                   <Text style={styles.secondaryButtonText}>Cancel</Text>
@@ -1770,6 +1850,89 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  invitePhoneRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  inviteCountryCode: {
+    minWidth: 70,
+    borderWidth: 1.5,
+    borderColor: '#d7e0e4',
+    backgroundColor: '#f0f4f5',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  inviteCountryCodeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1f2f33',
+  },
+  invitePhoneInput: {
+    flex: 1,
+  },
+  countryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  countryModalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '70%',
+    maxHeight: 500,
+    paddingBottom: 34,
+    overflow: 'hidden',
+  },
+  countryModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#ffffff',
+  },
+  countryModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  countryModalDone: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f766e',
+  },
+  countryListContainer: {
+    flex: 1,
+    minHeight: 0,
+    maxHeight: 360,
+  },
+  countryList: {
+    flex: 1,
+  },
+  countryListContent: {
+    paddingBottom: 24,
+  },
+  countryItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  countryItemPressed: {
+    backgroundColor: '#f0fdfa',
+  },
+  countryItemText: {
+    fontSize: 16,
+    color: '#334155',
   },
   pendingSheet: {
     backgroundColor: '#ffffff',
