@@ -439,10 +439,9 @@ export default function HomePage() {
     if (!userId || !profileId) return;
 
     let updatedAppointments: Appointment[];
+    const isUpdate = appointments.some((a) => a.id === appointment.id);
 
-    const existingIndex = appointments.findIndex((a) => a.id === appointment.id);
-    
-    if (existingIndex !== -1) {
+    if (isUpdate) {
       updatedAppointments = appointments.map((a) =>
         a.id === appointment.id ? appointment : a
       );
@@ -468,6 +467,23 @@ export default function HomePage() {
       return;
     }
 
+    void logProfileActivity({
+      profileId,
+      domain: "appointment",
+      action: isUpdate ? "update" : "add",
+      entity: {
+        id: appointment.id,
+        label: appointment.title || appointment.type || "Appointment",
+      },
+      metadata: {
+        id: appointment.id,
+        title: appointment.title || null,
+        type: appointment.type || null,
+        date: appointment.date || null,
+        time: appointment.time || null,
+      },
+    });
+
     setAppointments(updatedAppointments);
     writeHomeCache(cacheOwnerId, "appointments", updatedAppointments);
   };
@@ -478,6 +494,7 @@ export default function HomePage() {
     const confirmed = confirm("Delete this appointment?");
     if (!confirmed) return;
 
+    const deletedAppointment = appointments.find((a) => a.id === id) ?? null;
     const updatedAppointments = appointments.filter((a) => a.id !== id);
 
     const { error } = await supabase
@@ -497,6 +514,23 @@ export default function HomePage() {
       alert("Failed to delete appointment");
       return;
     }
+
+    void logProfileActivity({
+      profileId,
+      domain: "appointment",
+      action: "delete",
+      entity: {
+        id,
+        label: deletedAppointment?.title || deletedAppointment?.type || "Appointment",
+      },
+      metadata: {
+        id,
+        title: deletedAppointment?.title || null,
+        type: deletedAppointment?.type || null,
+        date: deletedAppointment?.date || null,
+        time: deletedAppointment?.time || null,
+      },
+    });
 
     setAppointments(updatedAppointments);
     writeHomeCache(cacheOwnerId, "appointments", updatedAppointments);

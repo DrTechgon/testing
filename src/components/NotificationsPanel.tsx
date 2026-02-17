@@ -84,6 +84,17 @@ type NotificationsPanelProps = {
   variant?: "desktop" | "modal";
 };
 
+type AppointmentsRow = {
+  profile_id: string;
+  appointments: unknown;
+};
+
+type ProfileLabelRow = {
+  id: string;
+  display_name: string | null;
+  name: string | null;
+};
+
 type ActivityLogDomain = "vault" | "medication" | "appointment";
 type ActivityLogAction = "upload" | "rename" | "delete" | "add" | "update";
 
@@ -105,20 +116,29 @@ type SharedActivityLogRow = ActivityLogRow & {
   profile_label?: string | null;
 };
 
+type AccountAppointmentNotification = {
+  notificationId: string;
+  profileId: string;
+  profileLabel: string | null;
+  appointment: Appointment;
+  dateTime: Date;
+};
+
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ACCEPTED_NOTIFICATION_TTL_MS = ONE_DAY_MS;
 const LOGS_PAGE_SIZE = 20;
-const dismissedInvitesKey = (userId: string, profileId?: string) =>
-  `vytara:dismissed-invites:${userId}:${profileId ?? "account"}`;
-const dismissedAppointmentsKey = (userId: string, profileId?: string) =>
-  `vytara:dismissed-appointments:${userId}:${profileId ?? "account"}`;
+const dismissedInvitesKey = (userId: string) =>
+  `vytara:dismissed-invites:${userId}:account`;
+const dismissedAppointmentsKey = (userId: string) =>
+  `vytara:dismissed-appointments:${userId}:account`;
 const dismissedFamilyNotificationsKey = (userId: string) =>
   `vytara:dismissed-family-notifications:${userId}`;
-const seenNotificationsKey = (userId: string, profileId?: string) =>
-  `vytara:seen-notification-panel-items:${userId}:${profileId ?? "account"}`;
+const seenNotificationsKey = (userId: string) =>
+  `vytara:seen-notification-panel-items:${userId}:account`;
 const seenLogsKey = (userId: string, profileId?: string) =>
   `vytara:seen-logs:${userId}:${profileId ?? "account"}`;
-const selfAppointmentNotificationId = (appointmentId: string) => `appointment:self:${appointmentId}`;
+const selfAppointmentNotificationId = (ownerProfileId: string, appointmentId: string) =>
+  `appointment:self:${ownerProfileId}:${appointmentId}`;
 const inviteNotificationId = (inviteId: string) => `invite:${inviteId}`;
 const familyActivityNotificationId = (activityId: string) => `family-activity:${activityId}`;
 const vaultFolderLabels: Record<FamilyVaultFile["folder"], string> = {
@@ -144,6 +164,29 @@ const parseStoredStringArray = (value: string | null): string[] => {
   } catch {
     return [];
   }
+};
+
+const parseJsonArray = (value: unknown, fallbackKey: string): unknown[] => {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object" && Array.isArray((value as Record<string, unknown>)[fallbackKey])) {
+    return (value as Record<string, unknown>)[fallbackKey] as unknown[];
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as Record<string, unknown>)[fallbackKey])
+      ) {
+        return (parsed as Record<string, unknown>)[fallbackKey] as unknown[];
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
 };
 
 const parseStoredLogSeenValue = (value: string | null): string[] => {
@@ -203,6 +246,9 @@ export function NotificationsPanel({
   const [familyMedicationStarts, setFamilyMedicationStarts] = useState<
     FamilyMedicationNotification[]
   >([]);
+  const [allProfileAppointments, setAllProfileAppointments] = useState<AccountAppointmentNotification[]>(
+    []
+  );
   const [sharedFamilyActivityLogs, setSharedFamilyActivityLogs] = useState<SharedActivityLogRow[]>(
     []
   );
@@ -234,23 +280,17 @@ export function NotificationsPanel({
     setHydratedDismissedFamilyKey(null);
     setHasHydratedSeenNotifications(false);
     try {
-      const primaryDismissedInvitesKey = dismissedInvitesKey(userId, profileId);
-      const primaryDismissedAppointmentsKey = dismissedAppointmentsKey(userId, profileId);
+      const primaryDismissedInvitesKey = dismissedInvitesKey(userId);
+      const primaryDismissedAppointmentsKey = dismissedAppointmentsKey(userId);
       const primaryDismissedFamilyKey = dismissedFamilyNotificationsKey(userId);
       const storedInvites = window.localStorage.getItem(primaryDismissedInvitesKey);
       const storedAppointments = window.localStorage.getItem(primaryDismissedAppointmentsKey);
       const storedFamilyNotifications = window.localStorage.getItem(primaryDismissedFamilyKey);
-      const primarySeenNotificationsKey = seenNotificationsKey(userId, profileId);
-      const fallbackSeenNotificationsKey = seenNotificationsKey(userId);
+      const primarySeenNotificationsKey = seenNotificationsKey(userId);
       const storedSeenNotificationsPrimary = window.localStorage.getItem(
         primarySeenNotificationsKey
       );
-      const storedSeenNotificationsFallback =
-        profileId && !storedSeenNotificationsPrimary
-          ? window.localStorage.getItem(fallbackSeenNotificationsKey)
-          : null;
-      const resolvedSeenNotificationsRaw =
-        storedSeenNotificationsPrimary ?? storedSeenNotificationsFallback;
+      const resolvedSeenNotificationsRaw = storedSeenNotificationsPrimary;
       setDismissedInviteIds(new Set(parseStoredStringArray(storedInvites)));
       setDismissedAppointmentIds(new Set(parseStoredStringArray(storedAppointments)));
       setDismissedFamilyNotificationIds(new Set(parseStoredStringArray(storedFamilyNotifications)));
@@ -261,15 +301,8 @@ export function NotificationsPanel({
       setHydratedDismissedInvitesKey(primaryDismissedInvitesKey);
       setHydratedDismissedAppointmentsKey(primaryDismissedAppointmentsKey);
       setHydratedDismissedFamilyKey(primaryDismissedFamilyKey);
-      if (
-        profileId &&
-        !storedSeenNotificationsPrimary &&
-        parsedSeenNotifications.length > 0
-      ) {
-        window.localStorage.setItem(
-          primarySeenNotificationsKey,
-          JSON.stringify(parsedSeenNotifications)
-        );
+      if (!storedSeenNotificationsPrimary && parsedSeenNotifications.length > 0) {
+        window.localStorage.setItem(primarySeenNotificationsKey, JSON.stringify(parsedSeenNotifications));
       }
     } catch {
       setDismissedInviteIds(new Set());
@@ -283,7 +316,7 @@ export function NotificationsPanel({
 
   useEffect(() => {
     if (!hasHydratedDismissedNotifications || !userId || typeof window === "undefined") return;
-    const storageKey = dismissedInvitesKey(userId, profileId);
+    const storageKey = dismissedInvitesKey(userId);
     if (hydratedDismissedInvitesKey !== storageKey) return;
     const merged = new Set(parseStoredStringArray(window.localStorage.getItem(storageKey)));
     dismissedInviteIds.forEach((id) => merged.add(id));
@@ -296,13 +329,12 @@ export function NotificationsPanel({
     dismissedInviteIds,
     hasHydratedDismissedNotifications,
     hydratedDismissedInvitesKey,
-    profileId,
     userId,
   ]);
 
   useEffect(() => {
     if (!hasHydratedDismissedNotifications || !userId || typeof window === "undefined") return;
-    const storageKey = dismissedAppointmentsKey(userId, profileId);
+    const storageKey = dismissedAppointmentsKey(userId);
     if (hydratedDismissedAppointmentsKey !== storageKey) return;
     const merged = new Set(parseStoredStringArray(window.localStorage.getItem(storageKey)));
     dismissedAppointmentIds.forEach((id) => merged.add(id));
@@ -315,7 +347,6 @@ export function NotificationsPanel({
     dismissedAppointmentIds,
     hasHydratedDismissedNotifications,
     hydratedDismissedAppointmentsKey,
-    profileId,
     userId,
   ]);
 
@@ -340,10 +371,10 @@ export function NotificationsPanel({
   useEffect(() => {
     if (!hasHydratedSeenNotifications || !userId || typeof window === "undefined") return;
     window.localStorage.setItem(
-      seenNotificationsKey(userId, profileId),
+      seenNotificationsKey(userId),
       JSON.stringify(Array.from(seenNotificationIds))
     );
-  }, [hasHydratedSeenNotifications, profileId, seenNotificationIds, userId]);
+  }, [hasHydratedSeenNotifications, seenNotificationIds, userId]);
 
   useEffect(() => {
     if (!userId || typeof window === "undefined") return;
@@ -386,12 +417,9 @@ export function NotificationsPanel({
       setNotificationsLoading(true);
       setNotificationsError("");
       try {
-        const response = await fetch(
-          `/api/care-circle/links${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ""}`,
-          {
+        const response = await fetch("/api/care-circle/links", {
           cache: "no-store",
-          }
-        );
+        });
         if (!response.ok) {
           throw new Error("Unable to load invites.");
         }
@@ -440,7 +468,114 @@ export function NotificationsPanel({
       isActive = false;
       clearInterval(interval);
     };
-  }, [profileId, userId]);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setAllProfileAppointments([]);
+      return;
+    }
+
+    let isActive = true;
+
+    const loadAllProfileAppointments = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_appointments")
+          .select("profile_id, appointments")
+          .eq("user_id", userId);
+
+        if (error) throw error;
+
+        const rows = ((data ?? []) as AppointmentsRow[]).filter(
+          (row): row is AppointmentsRow => Boolean(row?.profile_id)
+        );
+        const profileIds = Array.from(new Set(rows.map((row) => row.profile_id)));
+        const profileLabelById = new Map<string, string | null>();
+
+        if (profileIds.length > 0) {
+          const { data: profileRows, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, display_name, name")
+            .in("id", profileIds);
+
+          if (!profileError) {
+            (profileRows ?? []).forEach((profile) => {
+              const typed = profile as ProfileLabelRow;
+              profileLabelById.set(typed.id, typed.display_name?.trim() || typed.name?.trim() || null);
+            });
+          }
+        }
+
+        const byNotificationId = new Map<string, AccountAppointmentNotification>();
+
+        rows.forEach((row) => {
+          const appointmentRows = parseJsonArray(row.appointments, "appointments");
+          appointmentRows.forEach((entry) => {
+            if (!entry || typeof entry !== "object") return;
+            const appointment = entry as Record<string, unknown>;
+            const appointmentDate =
+              typeof appointment.date === "string" ? appointment.date.trim() : "";
+            const appointmentTime =
+              typeof appointment.time === "string" ? appointment.time.trim() : "";
+            if (!appointmentDate || !appointmentTime) return;
+            const appointmentId =
+              typeof appointment.id === "string" && appointment.id.trim()
+                ? appointment.id.trim()
+                : `${appointmentDate}-${appointmentTime}-${appointment.title || appointment.type || "appointment"}`;
+
+            const normalizedAppointment: Appointment = {
+              id: appointmentId,
+              date: appointmentDate,
+              time: appointmentTime,
+              title: typeof appointment.title === "string" ? appointment.title : "",
+              type: typeof appointment.type === "string" ? appointment.type : "Appointment",
+            };
+            const dateTime = parseAppointmentDateTime(normalizedAppointment);
+            if (!dateTime) return;
+            const notificationId = selfAppointmentNotificationId(row.profile_id, appointmentId);
+            byNotificationId.set(notificationId, {
+              notificationId,
+              profileId: row.profile_id,
+              profileLabel: profileLabelById.get(row.profile_id) ?? null,
+              appointment: normalizedAppointment,
+              dateTime,
+            });
+          });
+        });
+
+        if (profileId && appointments.length > 0) {
+          appointments.forEach((appointment) => {
+            const dateTime = parseAppointmentDateTime(appointment);
+            if (!dateTime) return;
+            const notificationId = selfAppointmentNotificationId(profileId, appointment.id);
+            if (byNotificationId.has(notificationId)) return;
+            byNotificationId.set(notificationId, {
+              notificationId,
+              profileId,
+              profileLabel: null,
+              appointment,
+              dateTime,
+            });
+          });
+        }
+
+        if (!isActive) return;
+        setAllProfileAppointments(Array.from(byNotificationId.values()));
+      } catch {
+        if (!isActive) return;
+        setAllProfileAppointments([]);
+      }
+    };
+
+    void loadAllProfileAppointments();
+    const interval = setInterval(loadAllProfileAppointments, 120_000);
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  }, [appointments, profileId, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -954,11 +1089,10 @@ export function NotificationsPanel({
     void persistDismissedNotification(notificationId);
   };
 
-  const dismissAppointment = (id: string) => {
-    const notificationId = selfAppointmentNotificationId(id);
+  const dismissAppointment = (notificationId: string) => {
     setDismissedAppointmentIds((prev) => {
       const next = new Set(prev);
-      next.add(id);
+      next.add(notificationId);
       return next;
     });
     setServerDismissedNotificationIds((prev) => {
@@ -1149,18 +1283,25 @@ export function NotificationsPanel({
     });
   }, [activeTab, activityLogs, hasHydratedSeenLogs, logsLoading]);
 
-  const upcomingAppointments = appointments
-    .map((appointment) => {
-      const dateTime = parseAppointmentDateTime(appointment);
-      if (!dateTime) return null;
-      const diffMs = dateTime.getTime() - now.getTime();
+  const upcomingAppointments = allProfileAppointments
+    .map((entry) => {
+      const diffMs = entry.dateTime.getTime() - now.getTime();
       if (diffMs <= 0 || diffMs > ONE_DAY_MS) return null;
-      return { appointment, dateTime, diffMs };
+      return {
+        ...entry,
+        diffMs,
+      };
     })
-    .filter((item): item is { appointment: Appointment; dateTime: Date; diffMs: number } => Boolean(item))
-    .filter(({ appointment }) => {
-      if (dismissedAppointmentIds.has(appointment.id)) return false;
-      return !serverDismissedNotificationIds.has(selfAppointmentNotificationId(appointment.id));
+    .filter(
+      (
+        item
+      ): item is AccountAppointmentNotification & {
+        diffMs: number;
+      } => Boolean(item)
+    )
+    .filter((entry) => {
+      if (dismissedAppointmentIds.has(entry.notificationId)) return false;
+      return !serverDismissedNotificationIds.has(entry.notificationId);
     })
     .sort((a, b) => a.diffMs - b.diffMs);
 
@@ -1229,7 +1370,7 @@ export function NotificationsPanel({
   );
   const notificationIds = Array.from(
     new Set([
-      ...upcomingAppointments.map(({ appointment }) => selfAppointmentNotificationId(appointment.id)),
+      ...upcomingAppointments.map((entry) => entry.notificationId),
       ...visibleFamilyJoinRequests.map((request) => request.id),
       ...visibleFamilyAcceptance.map((acceptance) => acceptance.id),
       ...visibleFamilyAppointments.map(({ id }) => id),
@@ -1242,7 +1383,7 @@ export function NotificationsPanel({
 
   useEffect(() => {
     setServerDismissedNotificationIds(new Set());
-  }, [profileId, userId]);
+  }, [userId]);
 
   useEffect(() => {
     if (!userId || notificationIds.length === 0) return;
@@ -1395,9 +1536,9 @@ export function NotificationsPanel({
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-              {upcomingAppointments.map(({ appointment, dateTime }) => (
+              {upcomingAppointments.map(({ notificationId, appointment, dateTime, profileLabel }) => (
                 <button
-                  key={`appointment-${appointment.id}`}
+                  key={notificationId}
                   type="button"
                   onClick={() => router.push("/app/homepage")}
                   className="group relative w-full rounded-2xl border border-slate-100 bg-amber-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
@@ -1411,7 +1552,7 @@ export function NotificationsPanel({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          dismissAppointment(appointment.id);
+                          dismissAppointment(notificationId);
                         }}
                         className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
                       >
@@ -1423,6 +1564,7 @@ export function NotificationsPanel({
                     <div>
                       <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
                       <p className="text-xs text-slate-600">
+                        {profileLabel ? `${profileLabel} · ` : ""}
                         {appointment.title || appointment.type} ·{" "}
                         {dateTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                       </p>
