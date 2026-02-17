@@ -540,7 +540,15 @@ useEffect(() => {
       if (error){
         console.log("Error: ", error);
       }
-      if (medicationError && medicationError.code !== "PGRST116") {
+      const medicationErrorCode =
+        typeof medicationError === "object" &&
+        medicationError !== null &&
+        "code" in medicationError &&
+        typeof medicationError.code === "string"
+          ? medicationError.code
+          : "";
+
+      if (medicationErrorCode && medicationErrorCode !== "PGRST116") {
         console.log("Medication fetch error: ", medicationError);
       }
 
@@ -550,7 +558,7 @@ useEffect(() => {
       const legacyMedicationList = (data?.current_medication as Medication[]) || [];
       const useLegacyMedicationList =
         medicationListFromTable.length === 0 &&
-        (!medicationData || medicationError?.code === "PGRST116") &&
+        (!medicationData || medicationErrorCode === "PGRST116") &&
         legacyMedicationList.length > 0;
       const resolvedMedicationList = useLegacyMedicationList
         ? legacyMedicationList

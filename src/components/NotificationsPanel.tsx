@@ -1208,7 +1208,7 @@ export function NotificationsPanel({
     visibleFamilyAppointments.length > 0 ||
     visibleFamilyVaultUpdates.length > 0 ||
     visibleFamilyMedicationStarts.length > 0;
-  const recentFamilyActivityLogs =
+  const recentFamilyActivityLogs: SharedActivityLogRow[] =
     sharedFamilyActivityLogs.length > 0
       ? sharedFamilyActivityLogs
       : hasLegacyFamilyActivity
