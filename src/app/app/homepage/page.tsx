@@ -36,6 +36,35 @@ type CacheEntry<T> = {
   value: T;
 };
 
+type ProfileActivityPayload = {
+  profileId: string;
+  domain: "vault" | "medication" | "appointment";
+  action: "upload" | "rename" | "delete" | "add" | "update";
+  entity?: {
+    id?: string | null;
+    label?: string | null;
+  };
+  metadata?: Record<string, unknown>;
+};
+
+type RawMedicationLog = {
+  medicationId?: unknown;
+  timestamp?: unknown;
+  taken?: unknown;
+};
+
+type RawMedication = {
+  id?: unknown;
+  name?: unknown;
+  dosage?: unknown;
+  purpose?: unknown;
+  frequency?: unknown;
+  timesPerDay?: unknown;
+  startDate?: unknown;
+  endDate?: unknown;
+  logs?: unknown;
+};
+
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
 const homeCacheKey = (cacheOwnerId: string, key: string) => `vytara:home:${cacheOwnerId}:${key}`;
 
@@ -57,6 +86,93 @@ const writeHomeCache = <T,>(cacheOwnerId: string, key: string, value: T) => {
   if (!cacheOwnerId || typeof window === "undefined") return;
   const entry: CacheEntry<T> = { ts: Date.now(), value };
   window.localStorage.setItem(homeCacheKey(cacheOwnerId, key), JSON.stringify(entry));
+};
+
+const medicationFrequencyTimes: Record<string, number> = {
+  once_daily: 1,
+  twice_daily: 2,
+  three_times_daily: 3,
+  four_times_daily: 4,
+  every_4_hours: 6,
+  every_6_hours: 4,
+  every_8_hours: 3,
+  every_12_hours: 2,
+  as_needed: 0,
+  with_meals: 3,
+  before_bed: 1,
+};
+
+const resolveTimesPerDay = (frequency: string, value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return medicationFrequencyTimes[frequency] ?? 1;
+};
+
+const normalizeMedicationList = (value: unknown): Medication[] => {
+  if (!Array.isArray(value)) return [];
+  const todayDate = new Date().toISOString().split("T")[0];
+  return value
+    .map((entry) => {
+      const med = (entry || {}) as RawMedication;
+      const id =
+        typeof med.id === "string" && med.id.trim() ? med.id.trim() : crypto.randomUUID();
+      const frequency = typeof med.frequency === "string" ? med.frequency.trim() : "";
+      const rawLogs = Array.isArray(med.logs) ? (med.logs as RawMedicationLog[]) : [];
+      const logs = rawLogs
+        .map((log) => ({
+          medicationId:
+            typeof log.medicationId === "string" && log.medicationId.trim()
+              ? log.medicationId.trim()
+              : id,
+          timestamp: typeof log.timestamp === "string" ? log.timestamp.trim() : "",
+          taken: typeof log.taken === "boolean" ? log.taken : null,
+        }))
+        .filter(
+          (log): log is { medicationId: string; timestamp: string; taken: boolean } =>
+            Boolean(log.timestamp) && log.taken !== null
+        );
+
+      return {
+        id,
+        name: typeof med.name === "string" ? med.name.trim() : "",
+        dosage: typeof med.dosage === "string" ? med.dosage.trim() : "",
+        purpose: typeof med.purpose === "string" ? med.purpose.trim() : "",
+        frequency,
+        timesPerDay: resolveTimesPerDay(frequency, med.timesPerDay),
+        startDate:
+          typeof med.startDate === "string" && med.startDate.trim()
+            ? med.startDate.trim()
+            : todayDate,
+        endDate:
+          typeof med.endDate === "string" && med.endDate.trim() ? med.endDate.trim() : undefined,
+        logs,
+      };
+    })
+    .filter((med) => med.name && med.dosage && med.frequency);
+};
+
+const getErrorMessage = (error: unknown, fallback = "Please try again.") => {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
+
+const logProfileActivity = async (payload: ProfileActivityPayload) => {
+  try {
+    await fetch("/api/profile/activity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Non-blocking log write.
+  }
 };
 
 /* =======================
@@ -233,7 +349,7 @@ export default function HomePage() {
     async function fetchMedications() {
       const cachedMeds = readHomeCache<Medication[]>(cacheOwnerId, "medications");
       if (cachedMeds) {
-        setMedications(cachedMeds);
+        setMedications(normalizeMedicationList(cachedMeds));
       }
 
       const { data, error } = await supabase
@@ -250,8 +366,29 @@ export default function HomePage() {
         return;
       }
 
-      setMedications(data?.medications || []);
-      writeHomeCache(cacheOwnerId, "medications", data?.medications || []);
+      const rawMedicationList = data?.medications || [];
+      const normalizedMedications = normalizeMedicationList(rawMedicationList);
+      setMedications(normalizedMedications);
+      writeHomeCache(cacheOwnerId, "medications", normalizedMedications);
+
+      const shouldRepair =
+        JSON.stringify(rawMedicationList || []) !== JSON.stringify(normalizedMedications);
+      if (shouldRepair) {
+        const { error: repairError } = await supabase
+          .from("user_medications")
+          .upsert(
+            {
+              profile_id: profileId,
+              user_id: userId,
+              medications: normalizedMedications,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "profile_id" }
+          );
+        if (repairError) {
+          console.error("Medications repair error:", repairError);
+        }
+      }
     }
 
     fetchMedications();
@@ -588,11 +725,28 @@ export default function HomePage() {
 
       if (error) throw error;
 
+      void logProfileActivity({
+        profileId,
+        domain: "medication",
+        action: "add",
+        entity: {
+          id: newMedication.id,
+          label: newMedication.name,
+        },
+        metadata: {
+          id: newMedication.id,
+          name: newMedication.name,
+          dosage: newMedication.dosage,
+          frequency: newMedication.frequency,
+          startDate: newMedication.startDate ?? null,
+        },
+      });
+
       setMedications(updatedMedications);
       writeHomeCache(cacheOwnerId, "medications", updatedMedications);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Add medication error:", error);
-      alert(`Failed to add medication: ${error.message || "Please try again."}`);
+      alert(`Failed to add medication: ${getErrorMessage(error)}`);
     }
   };
 
@@ -625,11 +779,28 @@ export default function HomePage() {
 
       if (error) throw error;
 
+      void logProfileActivity({
+        profileId,
+        domain: "medication",
+        action: "update",
+        entity: {
+          id: medication.id,
+          label: medication.name,
+        },
+        metadata: {
+          id: medication.id,
+          name: medication.name,
+          dosage: medication.dosage,
+          frequency: medication.frequency,
+          startDate: medication.startDate ?? null,
+        },
+      });
+
       setMedications(updatedMedications);
       writeHomeCache(cacheOwnerId, "medications", updatedMedications);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Update medication error:", error);
-      alert(`Failed to update medication: ${error.message || "Please try again."}`);
+      alert(`Failed to update medication: ${getErrorMessage(error)}`);
     }
   };
 
@@ -639,6 +810,7 @@ export default function HomePage() {
     const confirmed = confirm("Delete this medication?");
     if (!confirmed) return;
 
+    const deletedMedication = medications.find((m) => m.id === id) ?? null;
     const updatedMedications = medications.filter((m) => m.id !== id);
 
     try {
@@ -658,11 +830,25 @@ export default function HomePage() {
 
       if (error) throw error;
 
+      void logProfileActivity({
+        profileId,
+        domain: "medication",
+        action: "delete",
+        entity: {
+          id,
+          label: deletedMedication?.name ?? "Medication",
+        },
+        metadata: {
+          id,
+          name: deletedMedication?.name ?? null,
+        },
+      });
+
       setMedications(updatedMedications);
       writeHomeCache(cacheOwnerId, "medications", updatedMedications);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Delete medication error:", error);
-      alert(`Failed to delete medication: ${error.message || "Please try again."}`);
+      alert(`Failed to delete medication: ${getErrorMessage(error)}`);
     }
   };
 
@@ -708,9 +894,9 @@ export default function HomePage() {
 
       setMedications(updatedMedications);
       writeHomeCache(cacheOwnerId, "medications", updatedMedications);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to log dose:", error);
-      alert(`Failed to log dose: ${error.message || "Please try again."}`);
+      alert(`Failed to log dose: ${getErrorMessage(error)}`);
     }
   };
 
@@ -756,12 +942,13 @@ export default function HomePage() {
       alert(
         `✅ SOS Alert Sent Successfully!\n\n${data.message}\n\nYour emergency contacts have been notified.`
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("SOS error:", error);
+      const message = getErrorMessage(error, "Failed to send SOS alert. Please try again.");
       const errorMessage =
-        error.message === "Please enter a valid number"
+        message === "Please enter a valid number"
           ? "Please enter a valid number"
-          : error.message || "Failed to send SOS alert. Please try again.";
+          : message;
       alert(`❌ ${errorMessage}`);
     } finally {
       setIsSendingSOS(false);
@@ -978,7 +1165,15 @@ function Modal({
    CARD COMPONENT
 ======================= */
 
-function Card({ title, icon: Icon, onClick }: any) {
+function Card({
+  title,
+  icon: Icon,
+  onClick,
+}: {
+  title: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  onClick: () => void;
+}) {
   return (
     <div
       onClick={onClick}

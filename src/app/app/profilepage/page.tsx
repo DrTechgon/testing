@@ -34,6 +34,29 @@ const writeProfileCache = <T,>(userId: string, key: string, value: T) => {
   window.localStorage.setItem(profileCacheKey(userId, key), JSON.stringify(entry));
 };
 
+type ProfileActivityPayload = {
+  profileId: string;
+  domain: "vault" | "medication" | "appointment";
+  action: "upload" | "rename" | "delete" | "add" | "update";
+  entity?: {
+    id?: string | null;
+    label?: string | null;
+  };
+  metadata?: Record<string, unknown>;
+};
+
+const logProfileActivity = async (payload: ProfileActivityPayload) => {
+  try {
+    await fetch("/api/profile/activity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Non-blocking log write.
+  }
+};
+
 export default function ProfilePageUI() {
 
   const router = useRouter();
@@ -53,6 +76,8 @@ export default function ProfilePageUI() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [bloodGroup, setBloodGroup] = useState("");
   const [address, setAddress] = useState("");
+  const [heightCm, setHeightCm] = useState("");
+  const [weightKg, setWeightKg] = useState("");
   const [bmi, setBmi] = useState("");
   const [age, setAge] = useState("");
   const [personalDraft, setPersonalDraft] = useState({
@@ -62,6 +87,8 @@ export default function ProfilePageUI() {
     phoneNumber: "",
     bloodGroup: "",
     address: "",
+    heightCm: "",
+    weightKg: "",
   });
 
   const normalizedGender = gender.trim().toLowerCase();
@@ -103,11 +130,23 @@ export default function ProfilePageUI() {
   const [allergy, setAllergy] = useState<string[]>([]);
   const [treatment, setTreatment] = useState<string[]>([]);
 
+  type MedicationLog = {
+    medicationId: string;
+    timestamp: string;
+    taken: boolean;
+  };
+
   type Medication = {
-    name: string,
-    dosage: string,
-    frequency: string
-  }
+    id?: string;
+    name: string;
+    dosage: string;
+    frequency: string;
+    purpose?: string;
+    timesPerDay?: number;
+    startDate?: string;
+    endDate?: string;
+    logs?: MedicationLog[];
+  };
   
   const [currentMedications, setCurrentMedications] = useState<Medication[]>([]);
 
@@ -148,11 +187,61 @@ export default function ProfilePageUI() {
     { value: 12, label: "December" },
   ];
   const yearOptions = Array.from({ length: currentYear - 1899 }, (_, idx) => currentYear - idx);
+  const medicationFrequencyOptions = [
+    { label: "Once daily", value: "once_daily", times: 1 },
+    { label: "Twice daily", value: "twice_daily", times: 2 },
+    { label: "Three times daily", value: "three_times_daily", times: 3 },
+    { label: "Four times daily", value: "four_times_daily", times: 4 },
+    { label: "Every 4 hours", value: "every_4_hours", times: 6 },
+    { label: "Every 6 hours", value: "every_6_hours", times: 4 },
+    { label: "Every 8 hours", value: "every_8_hours", times: 3 },
+    { label: "Every 12 hours", value: "every_12_hours", times: 2 },
+    { label: "As needed", value: "as_needed", times: 0 },
+    { label: "With meals", value: "with_meals", times: 3 },
+    { label: "Before bed", value: "before_bed", times: 1 },
+  ];
 
   const formatMonthYear = (month: number | null, year: number | null) => {
     if (!month || !year) return "Date not set";
     const label = monthOptions.find((opt) => opt.value === month)?.label ?? String(month);
     return `${label} ${year}`;
+  };
+
+  const getFrequencyLabel = (frequencyValue: string) =>
+    medicationFrequencyOptions.find((option) => option.value === frequencyValue)?.label ||
+    frequencyValue;
+
+  const getFrequencyTimesPerDay = (frequencyValue: string) =>
+    medicationFrequencyOptions.find((option) => option.value === frequencyValue)?.times ?? 1;
+
+  const parseNullablePositiveNumber = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) return Number.NaN;
+    return parsed;
+  };
+
+  const computeAgeFromDob = (dobISO: string): number | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dobISO)) return null;
+    const birthDate = new Date(`${dobISO}T00:00:00`);
+    if (Number.isNaN(birthDate.getTime())) return null;
+    const now = new Date();
+    let computedAge = now.getFullYear() - birthDate.getFullYear();
+    const monthDelta = now.getMonth() - birthDate.getMonth();
+    if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < birthDate.getDate())) {
+      computedAge -= 1;
+    }
+    if (computedAge < 0 || computedAge > 130) return null;
+    return computedAge;
+  };
+
+  const computeBmiFromMetrics = (nextHeightCm: number | null, nextWeightKg: number | null): number | null => {
+    if (!nextHeightCm || !nextWeightKg) return null;
+    if (nextHeightCm < 50 || nextHeightCm > 260) return null;
+    if (nextWeightKg < 10 || nextWeightKg > 400) return null;
+    const h = nextHeightCm / 100;
+    return Math.round((nextWeightKg / (h * h)) * 10) / 10;
   };
 
   const openPersonalInfoModal = () => {
@@ -163,6 +252,8 @@ export default function ProfilePageUI() {
       phoneNumber,
       bloodGroup,
       address,
+      heightCm,
+      weightKg,
     });
     setIsPersonalInfoModalOpen(true);
   };
@@ -372,7 +463,10 @@ useEffect(() => {
         current_diagnosed_condition: string[] | null;
         allergies: string[] | null;
         ongoing_treatments: string[] | null;
+        medications: Medication[] | null;
         current_medication: Medication[] | null;
+        height_cm: number | string | null;
+        weight_kg: number | string | null;
         bmi: number | string | null;
         age: number | string | null;
         previous_diagnosed_conditions: string[] | null;
@@ -384,7 +478,20 @@ useEffect(() => {
         setConditions(cachedHealth.current_diagnosed_condition || []);
         setAllergy(cachedHealth.allergies || []);
         setTreatment(cachedHealth.ongoing_treatments || []);
-        setCurrentMedications(cachedHealth.current_medication || []);
+        const cachedMeds = Array.isArray(cachedHealth.medications)
+          ? cachedHealth.medications
+          : cachedHealth.current_medication || [];
+        setCurrentMedications(cachedMeds);
+        setHeightCm(
+          cachedHealth.height_cm !== null && cachedHealth.height_cm !== undefined
+            ? String(cachedHealth.height_cm)
+            : ''
+        );
+        setWeightKg(
+          cachedHealth.weight_kg !== null && cachedHealth.weight_kg !== undefined
+            ? String(cachedHealth.weight_kg)
+            : ''
+        );
         setBmi(
           cachedHealth.bmi !== null && cachedHealth.bmi !== undefined
             ? String(cachedHealth.bmi)
@@ -402,35 +509,64 @@ useEffect(() => {
         setChildhoodIllness(cachedHealth.childhood_illness || []);
         setLongTermTreatments(cachedHealth.long_term_treatments || []);
       }
-      const { data, error } = await supabase
-        .from("health")
-        .select(`
-          date_of_birth,
-          blood_group,
-          current_diagnosed_condition,
-          allergies,
-          ongoing_treatments,
-          current_medication,
-          bmi,
-          age,
-          previous_diagnosed_conditions,
-          past_surgeries,
-          childhood_illness,
-          long_term_treatments
-        `)
-        .eq("profile_id", profileId)
-        .maybeSingle();
+      const [{ data, error }, { data: medicationData, error: medicationError }] = await Promise.all([
+        supabase
+          .from("health")
+          .select(`
+            date_of_birth,
+            blood_group,
+            current_diagnosed_condition,
+            allergies,
+            ongoing_treatments,
+            current_medication,
+            height_cm,
+            weight_kg,
+            bmi,
+            age,
+            previous_diagnosed_conditions,
+            past_surgeries,
+            childhood_illness,
+            long_term_treatments
+          `)
+          .eq("profile_id", profileId)
+          .maybeSingle(),
+        supabase
+          .from("user_medications")
+          .select("medications")
+          .eq("profile_id", profileId)
+          .maybeSingle(),
+      ]);
 
       if (error){
         console.log("Error: ", error);
-        return;
       }
+      if (medicationError && medicationError.code !== "PGRST116") {
+        console.log("Medication fetch error: ", medicationError);
+      }
+
+      const medicationListFromTable = Array.isArray(medicationData?.medications)
+        ? (medicationData.medications as Medication[])
+        : [];
+      const legacyMedicationList = (data?.current_medication as Medication[]) || [];
+      const useLegacyMedicationList =
+        medicationListFromTable.length === 0 &&
+        (!medicationData || medicationError?.code === "PGRST116") &&
+        legacyMedicationList.length > 0;
+      const resolvedMedicationList = useLegacyMedicationList
+        ? legacyMedicationList
+        : medicationListFromTable;
+      setCurrentMedications(resolvedMedicationList);
 
       if (data){
         setConditions((data.current_diagnosed_condition as string[]) || []);
         setAllergy((data.allergies as string[]) || []);
         setTreatment((data.ongoing_treatments as string[]) || []);
-        setCurrentMedications((data.current_medication as Medication[]) || []);
+        setHeightCm(
+          data.height_cm !== null && data.height_cm !== undefined ? String(data.height_cm) : ""
+        );
+        setWeightKg(
+          data.weight_kg !== null && data.weight_kg !== undefined ? String(data.weight_kg) : ""
+        );
         setBmi(data.bmi !== null && data.bmi !== undefined ? String(data.bmi) : "");
         setAge(data.age !== null && data.age !== undefined ? String(data.age) : "");
         setBloodGroup(data.blood_group || "");
@@ -446,7 +582,10 @@ useEffect(() => {
           current_diagnosed_condition: (data.current_diagnosed_condition as string[]) || [],
           allergies: (data.allergies as string[]) || [],
           ongoing_treatments: (data.ongoing_treatments as string[]) || [],
-          current_medication: (data.current_medication as Medication[]) || [],
+          medications: resolvedMedicationList,
+          current_medication: legacyMedicationList,
+          height_cm: data.height_cm ?? null,
+          weight_kg: data.weight_kg ?? null,
           bmi: data.bmi ?? null,
           age: data.age ?? null,
           previous_diagnosed_conditions: (data.previous_diagnosed_conditions as string[]) || [],
@@ -706,12 +845,17 @@ useEffect(() => {
                       <div>
                         <p className="font-bold text-gray-700">{current.name}</p>
                         <p className="text-xs text-gray-500">Dosage: {current.dosage || "Not specified"}</p>
-                        <p className="text-xs text-gray-500">Frequency: {current.frequency || "Not specified"}</p>
+                        <p className="text-xs text-gray-500">
+                          Frequency: {current.frequency ? getFrequencyLabel(current.frequency) : "Not specified"}
+                        </p>
+                        {current.purpose ? (
+                          <p className="text-xs text-gray-500">Purpose: {current.purpose}</p>
+                        ) : null}
                       </div>
                     </div>
 
                     <span className='text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md shadow-sm border border-gray-100'>
-                      {current.frequency || "As directed"}
+                      {current.frequency ? getFrequencyLabel(current.frequency) : "As directed"}
                     </span>
                   </div>
                 ))}
@@ -869,6 +1013,18 @@ useEffect(() => {
                     alert("Please select a profile first.");
                     return;
                   }
+                  const parsedHeightCm = parseNullablePositiveNumber(personalDraft.heightCm);
+                  const parsedWeightKg = parseNullablePositiveNumber(personalDraft.weightKg);
+                  if (Number.isNaN(parsedHeightCm)) {
+                    alert("Please enter a valid height in cm.");
+                    return;
+                  }
+                  if (Number.isNaN(parsedWeightKg)) {
+                    alert("Please enter a valid weight in kg.");
+                    return;
+                  }
+                  const computedAge = computeAgeFromDob(personalDraft.dob);
+                  const computedBmi = computeBmiFromMetrics(parsedHeightCm, parsedWeightKg);
                   const personalData = {
                     display_name: personalDraft.userName,
                     phone: personalDraft.phoneNumber,
@@ -887,6 +1043,10 @@ useEffect(() => {
                         user_id: userId,
                         date_of_birth: personalDraft.dob,
                         blood_group: personalDraft.bloodGroup,
+                        height_cm: parsedHeightCm,
+                        weight_kg: parsedWeightKg,
+                        age: computedAge,
+                        bmi: computedBmi,
                         updated_at: new Date().toISOString(),
                       },
                       { onConflict: "profile_id" }
@@ -902,6 +1062,10 @@ useEffect(() => {
                     setPhoneNumber(personalDraft.phoneNumber);
                     setBloodGroup(personalDraft.bloodGroup);
                     setAddress(personalDraft.address);
+                    setHeightCm(parsedHeightCm !== null ? String(parsedHeightCm) : "");
+                    setWeightKg(parsedWeightKg !== null ? String(parsedWeightKg) : "");
+                    setAge(computedAge !== null ? String(computedAge) : "");
+                    setBmi(computedBmi !== null ? String(computedBmi) : "");
                     setIsPersonalInfoModalOpen(false);
                     alert("Personal information updated successfully!");
                   }
@@ -985,12 +1149,28 @@ useEffect(() => {
                       </div>
 
                       <div>
-                        <label className="block text-[#309898] mb-2">BMI (computed)</label>
+                        <label className="block text-[#309898] mb-2">Height (cm)</label>
                         <input
-                          value={bmi}
-                          placeholder="eg: 24.5"
-                          readOnly
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={personalDraft.heightCm}
+                          onChange={(e) => updatePersonalDraft({ heightCm: e.target.value })}
                           className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
+                          placeholder="eg: 170"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[#309898] mb-2">Weight (kg)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={personalDraft.weightKg}
+                          onChange={(e) => updatePersonalDraft({ weightKg: e.target.value })}
+                          className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
+                          placeholder="eg: 65"
                         />
                       </div>
                     </div>
@@ -1037,26 +1217,89 @@ useEffect(() => {
                     alert("Please select a profile first.");
                     return;
                   }
+                  const todayDate = new Date().toISOString().split("T")[0];
+                  const hasIncompleteMedication = currentMedications.some((med) => {
+                    const hasAnyValue = med.name.trim() || med.dosage.trim() || med.frequency.trim();
+                    if (!hasAnyValue) return false;
+                    return !med.name.trim() || !med.dosage.trim() || !med.frequency.trim();
+                  });
+                  if (hasIncompleteMedication) {
+                    alert("Please fill Name, Dosage, and Frequency for each medication.");
+                    return;
+                  }
+
+                  const normalizedMedications = currentMedications
+                    .map((med) => {
+                      const frequencyValue = (med.frequency || "").trim();
+                      const resolvedTimesPerDay =
+                        typeof med.timesPerDay === "number" && med.timesPerDay >= 0
+                          ? med.timesPerDay
+                          : getFrequencyTimesPerDay(frequencyValue);
+                      return {
+                        id: med.id?.trim() || crypto.randomUUID(),
+                        name: (med.name || "").trim(),
+                        dosage: (med.dosage || "").trim(),
+                        purpose: (med.purpose || "").trim(),
+                        frequency: frequencyValue,
+                        timesPerDay: resolvedTimesPerDay,
+                        startDate: med.startDate || todayDate,
+                        endDate: med.endDate || undefined,
+                        logs: Array.isArray(med.logs) ? med.logs : [],
+                      };
+                    })
+                    .filter((med) => med.name && med.dosage && med.frequency);
+
                   const healthData = {
                     profile_id: profileId,
                     user_id: userId,
                     current_diagnosed_condition: conditions.map((item) => item.trim()).filter(Boolean),
-                    current_medication: currentMedications
-                      .map((med) => ({
-                        name: med.name.trim(),
-                        dosage: med.dosage.trim(),
-                        frequency: med.frequency.trim(),
-                      }))
-                      .filter((med) => med.name),
                     allergies: allergy.map((item) => item.trim()).filter(Boolean),
                     ongoing_treatments: treatment.map((item) => item.trim()).filter(Boolean),
                   };
-                  const { error } = await supabase
-                    .from("health")
-                    .upsert(healthData, { onConflict: "profile_id" });
-                  if (error) {
-                    alert("Error: " + error.message);
+
+                  const [{ error: healthError }, { error: medicationError }] = await Promise.all([
+                    supabase
+                      .from("health")
+                      .upsert(healthData, { onConflict: "profile_id" }),
+                    supabase
+                      .from("user_medications")
+                      .upsert(
+                        {
+                          profile_id: profileId,
+                          user_id: userId,
+                          medications: normalizedMedications,
+                          updated_at: new Date().toISOString(),
+                        },
+                        { onConflict: "profile_id" }
+                      ),
+                  ]);
+
+                  if (healthError) {
+                    alert("Error: " + healthError.message);
+                  } else if (medicationError) {
+                    alert("Error: " + medicationError.message);
                   } else {
+                    const latestMedication =
+                      normalizedMedications[normalizedMedications.length - 1] ?? null;
+                    void logProfileActivity({
+                      profileId,
+                      domain: "medication",
+                      action: "update",
+                      entity: {
+                        id:
+                          typeof latestMedication?.id === "string"
+                            ? latestMedication.id
+                            : null,
+                        label:
+                          typeof latestMedication?.name === "string"
+                            ? latestMedication.name
+                            : "Medication list",
+                      },
+                      metadata: {
+                        totalMedications: normalizedMedications.length,
+                      },
+                    });
+                    setCurrentMedications(normalizedMedications);
                     setIsCurrentMedicalModalOpen(false);
                     alert("Health information updated successfully!");
                   }
@@ -1119,43 +1362,132 @@ useEffect(() => {
                             </button>
                           )}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="md:col-span-2">
-                              <label className="block text-[#309898] mb-2">Medication Name</label>
+                            <div>
+                              <label className="block text-[#309898] mb-2">Name</label>
                               <input
-                                value={med.name}
+                                value={med.name || ""}
                                 onChange={(e) => {
                                   const updated = [...currentMedications];
-                                  updated[index].name = e.target.value;
+                                  updated[index] = { ...updated[index], name: e.target.value };
                                   setCurrentMedications(updated);
                                 }}
-                                placeholder="e.g., Metformin"
-                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
+                                placeholder="e.g., Paracetamol"
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white"
                               />
                             </div>
                             <div>
                               <label className="block text-[#309898] mb-2">Dosage</label>
                               <input
-                                value={med.dosage}
+                                value={med.dosage || ""}
                                 onChange={(e) => {
                                   const updated = [...currentMedications];
-                                  updated[index].dosage = e.target.value;
+                                  updated[index] = { ...updated[index], dosage: e.target.value };
                                   setCurrentMedications(updated);
                                 }}
                                 placeholder="e.g., 500 mg"
-                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[#309898] mb-2">Purpose (optional)</label>
+                              <input
+                                value={med.purpose || ""}
+                                onChange={(e) => {
+                                  const updated = [...currentMedications];
+                                  updated[index] = { ...updated[index], purpose: e.target.value };
+                                  setCurrentMedications(updated);
+                                }}
+                                placeholder="e.g., Pain relief"
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white"
                               />
                             </div>
                             <div>
                               <label className="block text-[#309898] mb-2">Frequency</label>
-                              <input
-                                value={med.frequency}
+                              <select
+                                value={med.frequency || ""}
                                 onChange={(e) => {
                                   const updated = [...currentMedications];
-                                  updated[index].frequency = e.target.value;
+                                  const selectedFrequency = e.target.value;
+                                  const selectedOption = medicationFrequencyOptions.find(
+                                    (option) => option.value === selectedFrequency
+                                  );
+                                  updated[index] = {
+                                    ...updated[index],
+                                    frequency: selectedFrequency,
+                                    timesPerDay: selectedOption?.times ?? updated[index].timesPerDay ?? 1,
+                                  };
                                   setCurrentMedications(updated);
                                 }}
-                                placeholder="e.g., Twice a day"
-                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800"
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white"
+                              >
+                                <option value="">Select frequency</option>
+                                {medicationFrequencyOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                                {med.frequency &&
+                                !medicationFrequencyOptions.some(
+                                  (option) => option.value === med.frequency
+                                ) ? (
+                                  <option value={med.frequency}>{med.frequency}</option>
+                                ) : null}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[#309898] mb-2">Times per Day</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                value={String(
+                                  typeof med.timesPerDay === "number"
+                                    ? med.timesPerDay
+                                    : getFrequencyTimesPerDay(med.frequency || "")
+                                )}
+                                onChange={(e) => {
+                                  const updated = [...currentMedications];
+                                  const parsed = Number(e.target.value);
+                                  updated[index] = {
+                                    ...updated[index],
+                                    timesPerDay: Number.isFinite(parsed) && parsed >= 0 ? parsed : 1,
+                                  };
+                                  setCurrentMedications(updated);
+                                }}
+                                disabled={medicationFrequencyOptions.some(
+                                  (option) => option.value === (med.frequency || "")
+                                )}
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white disabled:bg-gray-100"
+                                placeholder="1"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[#309898] mb-2">Start Date</label>
+                              <input
+                                type="date"
+                                value={med.startDate || ""}
+                                onChange={(e) => {
+                                  const updated = [...currentMedications];
+                                  updated[index] = { ...updated[index], startDate: e.target.value };
+                                  setCurrentMedications(updated);
+                                }}
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-[#309898] mb-2">End Date (optional)</label>
+                              <input
+                                type="date"
+                                value={med.endDate || ""}
+                                onChange={(e) => {
+                                  const updated = [...currentMedications];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    endDate: e.target.value || undefined,
+                                  };
+                                  setCurrentMedications(updated);
+                                }}
+                                className="w-full px-4 py-2 rounded-lg border-2 border-[#309898]/30 text-gray-800 bg-white"
                               />
                             </div>
                           </div>
@@ -1163,12 +1495,22 @@ useEffect(() => {
                       ))}
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          const todayDate = new Date().toISOString().split("T")[0];
                           setCurrentMedications([
                             ...currentMedications,
-                            { name: "", dosage: "", frequency: "" },
-                          ])
-                        }
+                            {
+                              name: "",
+                              dosage: "",
+                              purpose: "",
+                              frequency: "",
+                              timesPerDay: 1,
+                              startDate: todayDate,
+                              endDate: undefined,
+                              logs: [],
+                            },
+                          ]);
+                        }}
                         className="flex items-center gap-2 text-[#FF8000] cursor-pointer"
                       >
                         <Plus className="w-5 h-5" /> Add Medication

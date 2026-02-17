@@ -2466,9 +2466,6 @@ export default function CareCirclePage() {
                   description="Circles where someone else invited you. Use this section to view what access you have and open shared details or emergency card."
                 />
               </div>
-              <p className="text-slate-500 text-sm">
-                Circles managed by others that you&apos;re part of.
-              </p>
             </div>
 
             <div className="mt-6 space-y-4">

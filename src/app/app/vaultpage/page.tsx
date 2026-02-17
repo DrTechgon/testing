@@ -58,6 +58,29 @@ const writeVaultCache = <T,>(ownerId: string, key: string, value: T) => {
   window.localStorage.setItem(vaultCacheKey(ownerId, key), JSON.stringify(entry));
 };
 
+type ProfileActivityPayload = {
+  profileId: string;
+  domain: 'vault' | 'medication' | 'appointment';
+  action: 'upload' | 'rename' | 'delete' | 'add' | 'update';
+  entity?: {
+    id?: string | null;
+    label?: string | null;
+  };
+  metadata?: Record<string, unknown>;
+};
+
+const logProfileActivity = async (payload: ProfileActivityPayload) => {
+  try {
+    await fetch('/api/profile/activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Non-blocking log write.
+  }
+};
+
 export default function VaultPage() {
   const { selectedProfile } = useAppProfile();
   const storageOwnerId = selectedProfile?.id ?? '';
@@ -278,11 +301,12 @@ export default function VaultPage() {
     const fallbackBase = stripExtension(uploadData.file.name) || 'untitled';
     const finalBase = baseFromInput || fallbackBase;
     const finalName = originalExt ? `${finalBase}.${originalExt}` : finalBase;
+    const targetFolder = folderMap[uploadData.category];
 
     try {
       const { error } = await uploadMedicalFile(
         storageOwnerId,
-        folderMap[uploadData.category],
+        targetFolder,
         uploadData.file,
         finalName
       );
@@ -296,6 +320,17 @@ export default function VaultPage() {
         }));
         return;
       }
+
+      await logProfileActivity({
+        profileId: storageOwnerId,
+        domain: 'vault',
+        action: 'upload',
+        entity: { label: finalName },
+        metadata: {
+          folder: targetFolder,
+          fileName: finalName,
+        },
+      });
 
       // Upload successful
       setShowUploadModal(false);
@@ -329,6 +364,17 @@ export default function VaultPage() {
       return;
     }
 
+    await logProfileActivity({
+      profileId: storageOwnerId,
+      domain: 'vault',
+      action: 'delete',
+      entity: { label: file.name },
+      metadata: {
+        folder: file.folder,
+        fileName: file.name,
+      },
+    });
+
     setFiles((prev) => prev.filter((f) => f.name !== file.name));
     fetchCounts(storageOwnerId);
   };
@@ -358,6 +404,18 @@ export default function VaultPage() {
       alert(error.message || 'Failed to rename file.');
       return;
     }
+
+    await logProfileActivity({
+      profileId: storageOwnerId,
+      domain: 'vault',
+      action: 'rename',
+      entity: { label: nextName },
+      metadata: {
+        folder: file.folder,
+        fromName: file.name,
+        toName: nextName,
+      },
+    });
 
     setFiles((prev) =>
       prev.map((f) => (f.name === file.name ? { ...f, name: nextName } : f))

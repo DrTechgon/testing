@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import { logCareCircleActivity } from '@/lib/careCircleActivityLogs';
 
 const CARE_CIRCLE_FOLDERS = ['reports', 'prescriptions', 'insurance', 'bills'] as const;
 type CareCircleFolder = (typeof CARE_CIRCLE_FOLDERS)[number];
@@ -42,6 +43,7 @@ type VaultFile = {
 type AuthorizedVaultAccess = {
   adminClient: SupabaseClient;
   ownerProfileId: string;
+  actorUserId: string;
 };
 
 type RenamePayload = {
@@ -251,6 +253,7 @@ const getAuthorizedVaultAccess = async (
     access: {
       adminClient,
       ownerProfileId: link.profile_id,
+      actorUserId: user.id,
     },
     response: null,
   };
@@ -394,6 +397,23 @@ export async function POST(request: Request) {
       );
     }
 
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'vault',
+      action: 'upload',
+      entity: {
+        id: targetPath,
+        label: finalName,
+      },
+      metadata: {
+        folder,
+        fileName: finalName,
+        path: data?.path ?? targetPath,
+      },
+    });
+
     return NextResponse.json({
       file: {
         name: finalName,
@@ -453,6 +473,23 @@ export async function PATCH(request: Request) {
       );
     }
 
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'vault',
+      action: 'rename',
+      entity: {
+        id: nextPath,
+        label: nextName,
+      },
+      metadata: {
+        folder,
+        fromName: currentName,
+        toName: nextName,
+      },
+    });
+
     return NextResponse.json({
       file: {
         name: nextName,
@@ -499,6 +536,22 @@ export async function DELETE(request: Request) {
     if (error) {
       return NextResponse.json({ message: error.message }, { status: 500 });
     }
+
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'vault',
+      action: 'delete',
+      entity: {
+        id: path,
+        label: fileName,
+      },
+      metadata: {
+        folder,
+        fileName,
+      },
+    });
 
     return NextResponse.json({ deleted: true });
   } catch (error) {

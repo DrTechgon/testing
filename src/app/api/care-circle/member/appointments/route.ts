@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import { logCareCircleActivity } from '@/lib/careCircleActivityLogs';
 
 type CareCircleRole = 'family' | 'friend';
 
@@ -27,6 +28,7 @@ type AuthorizedAppointmentAccess = {
   adminClient: SupabaseClient;
   ownerProfileId: string;
   ownerUserId: string;
+  actorUserId: string;
 };
 
 type AppointmentUpsertPayload = {
@@ -276,6 +278,7 @@ const getAuthorizedAppointmentAccess = async (
       adminClient,
       ownerProfileId: link.profile_id,
       ownerUserId: link.requester_id,
+      actorUserId: user.id,
     },
     response: null,
   };
@@ -365,6 +368,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: saveError.message }, { status: 500 });
     }
 
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'appointment',
+      action: 'add',
+      entity: {
+        id: normalized.id,
+        label: normalized.title,
+      },
+      metadata: {
+        title: normalized.title,
+        type: normalized.type,
+        date: normalized.date,
+        time: normalized.time,
+      },
+    });
+
     return NextResponse.json({
       appointment: normalized,
       appointments: nextAppointments,
@@ -421,6 +442,24 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ message: saveError.message }, { status: 500 });
     }
 
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'appointment',
+      action: 'update',
+      entity: {
+        id: normalized.id,
+        label: normalized.title,
+      },
+      metadata: {
+        title: normalized.title,
+        type: normalized.type,
+        date: normalized.date,
+        time: normalized.time,
+      },
+    });
+
     return NextResponse.json({
       appointment: normalized,
       appointments: nextAppointments,
@@ -456,6 +495,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: context.error.message }, { status: 500 });
     }
 
+    const deletedAppointment = context.appointments.find((entry) => entry.id === appointmentId);
     const nextAppointments = context.appointments.filter((entry) => entry.id !== appointmentId);
     if (nextAppointments.length === context.appointments.length) {
       return NextResponse.json({ message: 'Appointment not found.' }, { status: 404 });
@@ -466,6 +506,24 @@ export async function DELETE(request: Request) {
     if (saveError) {
       return NextResponse.json({ message: saveError.message }, { status: 500 });
     }
+
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'appointment',
+      action: 'delete',
+      entity: {
+        id: appointmentId,
+        label: deletedAppointment?.title ?? null,
+      },
+      metadata: {
+        title: deletedAppointment?.title ?? null,
+        type: deletedAppointment?.type ?? null,
+        date: deletedAppointment?.date ?? null,
+        time: deletedAppointment?.time ?? null,
+      },
+    });
 
     return NextResponse.json({
       deleted: true,

@@ -5,10 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/createClient";
 import { useAppProfile } from "@/components/AppProfileProvider";
 
+interface MedicationLogEntry {
+  medicationId: string;
+  timestamp: string;
+  taken: boolean;
+}
+
 interface MedicationEntry {
+  id?: string;
   name: string;
   dosage: string;
+  purpose: string;
   frequency: string;
+  timesPerDay?: number;
+  startDate?: string;
+  endDate?: string;
+  logs?: MedicationLogEntry[];
 }
 
 interface PastSurgeryEntry {
@@ -73,6 +85,32 @@ const QUESTIONS: QuestionConfig[] = [
   { key: "childhoodIllness", question: "Childhood illnesses?", inputType: "multi-text", placeholder: "e.g., Chickenpox" },
   { key: "longTermTreatments", question: "Long-term treatments (if any)?", inputType: "multi-text", placeholder: "e.g., Thyroid medication" },
 ];
+
+const MEDICATION_FREQUENCY_OPTIONS = [
+  { label: "Once daily", value: "once_daily", times: 1 },
+  { label: "Twice daily", value: "twice_daily", times: 2 },
+  { label: "Three times daily", value: "three_times_daily", times: 3 },
+  { label: "Four times daily", value: "four_times_daily", times: 4 },
+  { label: "Every 4 hours", value: "every_4_hours", times: 6 },
+  { label: "Every 6 hours", value: "every_6_hours", times: 4 },
+  { label: "Every 8 hours", value: "every_8_hours", times: 3 },
+  { label: "Every 12 hours", value: "every_12_hours", times: 2 },
+  { label: "As needed", value: "as_needed", times: 0 },
+  { label: "With meals", value: "with_meals", times: 3 },
+  { label: "Before bed", value: "before_bed", times: 1 },
+];
+
+const getTimesPerDayForFrequency = (frequency: string) =>
+  MEDICATION_FREQUENCY_OPTIONS.find((option) => option.value === frequency)?.times ?? 1;
+
+const createEmptyMedicationEntry = (): MedicationEntry => ({
+  name: "",
+  dosage: "",
+  purpose: "",
+  frequency: "once_daily",
+  timesPerDay: 1,
+  logs: [],
+});
 
 const uid = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -208,7 +246,7 @@ export default function HealthOnboardingChatbot() {
       }
     }
     if (currentQ.inputType === "multi-medication" && profile.currentMedication.length === 0) {
-      setProfile((prev) => ({ ...prev, currentMedication: [{ name: "", dosage: "", frequency: "" }] }));
+      setProfile((prev) => ({ ...prev, currentMedication: [createEmptyMedicationEntry()] }));
     }
     if (currentQ.inputType === "multi-surgery" && profile.pastSurgeries.length === 0) {
       setProfile((prev) => ({ ...prev, pastSurgeries: [{ name: "", month: null, year: null }] }));
@@ -281,17 +319,33 @@ export default function HealthOnboardingChatbot() {
     advanceStep(cleaned.length ? cleaned.join(", ") : "None");
   };
 
+  const getFrequencyLabel = (frequencyValue: string) =>
+    MEDICATION_FREQUENCY_OPTIONS.find((option) => option.value === frequencyValue)?.label ||
+    frequencyValue;
+
   const formatMedicationSummary = (items: MedicationEntry[]) =>
-    items.map((item) => [item.name, item.dosage, item.frequency].filter(Boolean).join(" - ")).join(", ");
+    items
+      .map((item) => [item.name, item.dosage, getFrequencyLabel(item.frequency)].filter(Boolean).join(" - "))
+      .join(", ");
 
   const handleMedicationNext = () => {
+    const todayDate = new Date().toISOString().split("T")[0];
     const normalized = profile.currentMedication
       .map((item) => ({
-        name: item.name.trim(),
-        dosage: item.dosage.trim(),
-        frequency: item.frequency.trim(),
+        id: item.id?.trim() || crypto.randomUUID(),
+        name: (item.name || "").trim(),
+        dosage: (item.dosage || "").trim(),
+        purpose: (item.purpose || "").trim(),
+        frequency: (item.frequency || "").trim(),
+        timesPerDay:
+          typeof item.timesPerDay === "number" && item.timesPerDay >= 0
+            ? item.timesPerDay
+            : getTimesPerDayForFrequency((item.frequency || "").trim()),
+        startDate: item.startDate || todayDate,
+        endDate: item.endDate || undefined,
+        logs: Array.isArray(item.logs) ? item.logs : [],
       }))
-      .filter((item) => item.name || item.dosage || item.frequency);
+      .filter((item) => item.name || item.dosage || item.frequency || item.purpose);
 
     if (!normalized.length) {
       setProfile((prev) => ({ ...prev, currentMedication: [] }));
@@ -432,9 +486,18 @@ export default function HealthOnboardingChatbot() {
         ongoingTreatments: sanitizeTextList(profile.ongoingTreatments),
         currentMedication: profile.currentMedication
           .map((item) => ({
-            name: item.name.trim(),
-            dosage: item.dosage.trim(),
-            frequency: item.frequency.trim(),
+            id: item.id?.trim() || crypto.randomUUID(),
+            name: (item.name || "").trim(),
+            dosage: (item.dosage || "").trim(),
+            purpose: (item.purpose || "").trim(),
+            frequency: (item.frequency || "").trim(),
+            timesPerDay:
+              typeof item.timesPerDay === "number" && item.timesPerDay >= 0
+                ? item.timesPerDay
+                : getTimesPerDayForFrequency((item.frequency || "").trim()),
+            startDate: item.startDate || new Date().toISOString().split("T")[0],
+            endDate: item.endDate || undefined,
+            logs: Array.isArray(item.logs) ? item.logs : [],
           }))
           .filter((item) => item.name && item.dosage && item.frequency),
         previousDiagnosedConditions: sanitizeTextList(profile.previousDiagnosedConditions),
@@ -732,7 +795,9 @@ export default function HealthOnboardingChatbot() {
 
                 {currentQ.inputType === "multi-medication" && (
                   <>
-                    <div style={styles.helperText}>Add dosage and frequency if available. Medication name is required.</div>
+                    <div style={styles.helperText}>
+                      Name, dosage, and frequency are required to match your homepage medication format.
+                    </div>
                     {profile.currentMedication.map((item, index) => (
                       <div key={`med-${index}`} style={styles.multiGroup}>
                         <div style={styles.multiLabel}>Medication {index + 1}</div>
@@ -770,19 +835,67 @@ export default function HealthOnboardingChatbot() {
                               next[index] = { ...next[index], dosage: e.target.value };
                               setProfile((prev) => ({ ...prev, currentMedication: next }));
                             }}
-                            placeholder="Dosage (optional)"
+                            placeholder="Dosage"
                           />
                         </div>
                         <div style={styles.inputRow}>
                           <input
                             style={styles.input}
-                            value={item.frequency}
+                            value={item.purpose || ""}
                             onChange={(e) => {
                               const next = [...profile.currentMedication];
-                              next[index] = { ...next[index], frequency: e.target.value };
+                              next[index] = { ...next[index], purpose: e.target.value };
                               setProfile((prev) => ({ ...prev, currentMedication: next }));
                             }}
-                            placeholder="Frequency (optional)"
+                            placeholder="Purpose (optional)"
+                          />
+                        </div>
+                        <div style={styles.inputRow}>
+                          <select
+                            style={styles.input}
+                            value={item.frequency || "once_daily"}
+                            onWheel={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const next = [...profile.currentMedication];
+                              const selectedFrequency = e.target.value;
+                              next[index] = {
+                                ...next[index],
+                                frequency: selectedFrequency,
+                                timesPerDay: getTimesPerDayForFrequency(selectedFrequency),
+                              };
+                              setProfile((prev) => ({ ...prev, currentMedication: next }));
+                            }}
+                          >
+                            {MEDICATION_FREQUENCY_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={styles.inputRow}>
+                          <input
+                            style={styles.input}
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={
+                              item.timesPerDay ??
+                              getTimesPerDayForFrequency(item.frequency || "once_daily")
+                            }
+                            onChange={(e) => {
+                              const next = [...profile.currentMedication];
+                              const parsed = Number(e.target.value);
+                              next[index] = {
+                                ...next[index],
+                                timesPerDay:
+                                  Number.isFinite(parsed) && parsed >= 0
+                                    ? parsed
+                                    : getTimesPerDayForFrequency(item.frequency || "once_daily"),
+                              };
+                              setProfile((prev) => ({ ...prev, currentMedication: next }));
+                            }}
+                            placeholder="Times per day"
                           />
                         </div>
                       </div>
@@ -794,13 +907,16 @@ export default function HealthOnboardingChatbot() {
                         style={styles.addRowBtn}
                         onClick={() => {
                           const last = profile.currentMedication[profile.currentMedication.length - 1];
-                          if (!last?.name.trim()) {
-                            addMessage("bot", "⚠️ Please enter a medication name before adding another.");
+                          if (!last?.name.trim() || !last?.dosage.trim() || !last?.frequency.trim()) {
+                            addMessage(
+                              "bot",
+                              "⚠️ Please complete name, dosage, and frequency before adding another medication."
+                            );
                             return;
                           }
                           setProfile((prev) => ({
                             ...prev,
-                            currentMedication: [...prev.currentMedication, { name: "", dosage: "", frequency: "" }],
+                            currentMedication: [...prev.currentMedication, createEmptyMedicationEntry()],
                           }));
                         }}
                       >

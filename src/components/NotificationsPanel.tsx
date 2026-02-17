@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, X } from "lucide-react";
+import { Bell, Calendar, FileText, Pill, X } from "lucide-react";
 import { supabase } from "@/lib/createClient";
 
 type CareCircleInvite = {
@@ -84,14 +84,43 @@ type NotificationsPanelProps = {
   variant?: "desktop" | "modal";
 };
 
+type ActivityLogDomain = "vault" | "medication" | "appointment";
+type ActivityLogAction = "upload" | "rename" | "delete" | "add" | "update";
+
+type ActivityLogRow = {
+  id: string;
+  profile_id: string;
+  source: string;
+  domain: ActivityLogDomain;
+  action: ActivityLogAction;
+  actor_user_id: string;
+  actor_display_name: string | null;
+  entity_id: string | null;
+  entity_label: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type SharedActivityLogRow = ActivityLogRow & {
+  profile_label?: string | null;
+};
+
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const ACCEPTED_NOTIFICATION_TTL_MS = 7 * ONE_DAY_MS;
+const ACCEPTED_NOTIFICATION_TTL_MS = ONE_DAY_MS;
+const LOGS_PAGE_SIZE = 20;
 const dismissedInvitesKey = (userId: string, profileId?: string) =>
   `vytara:dismissed-invites:${userId}:${profileId ?? "account"}`;
 const dismissedAppointmentsKey = (userId: string, profileId?: string) =>
   `vytara:dismissed-appointments:${userId}:${profileId ?? "account"}`;
 const dismissedFamilyNotificationsKey = (userId: string) =>
   `vytara:dismissed-family-notifications:${userId}`;
+const seenNotificationsKey = (userId: string, profileId?: string) =>
+  `vytara:seen-notification-panel-items:${userId}:${profileId ?? "account"}`;
+const seenLogsKey = (userId: string, profileId?: string) =>
+  `vytara:seen-logs:${userId}:${profileId ?? "account"}`;
+const selfAppointmentNotificationId = (appointmentId: string) => `appointment:self:${appointmentId}`;
+const inviteNotificationId = (inviteId: string) => `invite:${inviteId}`;
+const familyActivityNotificationId = (activityId: string) => `family-activity:${activityId}`;
 const vaultFolderLabels: Record<FamilyVaultFile["folder"], string> = {
   reports: "Lab report",
   prescriptions: "Prescription",
@@ -105,6 +134,42 @@ const parseAppointmentDateTime = (appointment: Appointment) => {
   return parsed;
 };
 
+const parseStoredStringArray = (value: string | null): string[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseStoredLogSeenValue = (value: string | null): string[] => {
+  if (!value) return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  if (trimmed.includes("T") && Number.isFinite(Date.parse(trimmed))) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((entry): entry is string => typeof entry === "string");
+    }
+    if (typeof parsed === "string") {
+      const parsedTrimmed = parsed.trim();
+      return parsedTrimmed ? [parsedTrimmed] : [];
+    }
+    return [];
+  } catch {
+    return [trimmed];
+  }
+};
+
 export function NotificationsPanel({
   userId,
   profileId,
@@ -112,6 +177,7 @@ export function NotificationsPanel({
   variant = "desktop",
 }: NotificationsPanelProps) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"notifications" | "logs">("notifications");
   const [careCircleInvites, setCareCircleInvites] = useState<CareCircleInvite[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState("");
@@ -123,6 +189,7 @@ export function NotificationsPanel({
   const [dismissedFamilyNotificationIds, setDismissedFamilyNotificationIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [seenNotificationIds, setSeenNotificationIds] = useState<Set<string>>(() => new Set());
   const [familyJoinRequests, setFamilyJoinRequests] = useState<FamilyJoinRequestNotification[]>(
     []
   );
@@ -136,67 +203,180 @@ export function NotificationsPanel({
   const [familyMedicationStarts, setFamilyMedicationStarts] = useState<
     FamilyMedicationNotification[]
   >([]);
+  const [sharedFamilyActivityLogs, setSharedFamilyActivityLogs] = useState<SharedActivityLogRow[]>(
+    []
+  );
+  const [activityLogs, setActivityLogs] = useState<ActivityLogRow[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsLoadingMore, setLogsLoadingMore] = useState(false);
+  const [logsError, setLogsError] = useState("");
+  const [logsOffset, setLogsOffset] = useState(0);
+  const [logsHasMore, setLogsHasMore] = useState(false);
+  const [seenLogIds, setSeenLogIds] = useState<Set<string>>(() => new Set());
+  const [serverDismissedNotificationIds, setServerDismissedNotificationIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [hasHydratedDismissedNotifications, setHasHydratedDismissedNotifications] = useState(false);
+  const [hydratedDismissedInvitesKey, setHydratedDismissedInvitesKey] = useState<string | null>(null);
+  const [hydratedDismissedAppointmentsKey, setHydratedDismissedAppointmentsKey] = useState<string | null>(
+    null
+  );
+  const [hydratedDismissedFamilyKey, setHydratedDismissedFamilyKey] = useState<string | null>(null);
+  const [hasHydratedSeenNotifications, setHasHydratedSeenNotifications] = useState(false);
+  const [hasHydratedSeenLogs, setHasHydratedSeenLogs] = useState(false);
+  const [hydratedSeenLogsKey, setHydratedSeenLogsKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId || typeof window === "undefined") return;
+    setHasHydratedDismissedNotifications(false);
+    setHydratedDismissedInvitesKey(null);
+    setHydratedDismissedAppointmentsKey(null);
+    setHydratedDismissedFamilyKey(null);
+    setHasHydratedSeenNotifications(false);
     try {
-      const storedInvites = window.localStorage.getItem(
-        dismissedInvitesKey(userId, profileId)
+      const primaryDismissedInvitesKey = dismissedInvitesKey(userId, profileId);
+      const primaryDismissedAppointmentsKey = dismissedAppointmentsKey(userId, profileId);
+      const primaryDismissedFamilyKey = dismissedFamilyNotificationsKey(userId);
+      const storedInvites = window.localStorage.getItem(primaryDismissedInvitesKey);
+      const storedAppointments = window.localStorage.getItem(primaryDismissedAppointmentsKey);
+      const storedFamilyNotifications = window.localStorage.getItem(primaryDismissedFamilyKey);
+      const primarySeenNotificationsKey = seenNotificationsKey(userId, profileId);
+      const fallbackSeenNotificationsKey = seenNotificationsKey(userId);
+      const storedSeenNotificationsPrimary = window.localStorage.getItem(
+        primarySeenNotificationsKey
       );
-      const storedAppointments = window.localStorage.getItem(
-        dismissedAppointmentsKey(userId, profileId)
+      const storedSeenNotificationsFallback =
+        profileId && !storedSeenNotificationsPrimary
+          ? window.localStorage.getItem(fallbackSeenNotificationsKey)
+          : null;
+      const resolvedSeenNotificationsRaw =
+        storedSeenNotificationsPrimary ?? storedSeenNotificationsFallback;
+      setDismissedInviteIds(new Set(parseStoredStringArray(storedInvites)));
+      setDismissedAppointmentIds(new Set(parseStoredStringArray(storedAppointments)));
+      setDismissedFamilyNotificationIds(new Set(parseStoredStringArray(storedFamilyNotifications)));
+      const parsedSeenNotifications = parseStoredStringArray(
+        resolvedSeenNotificationsRaw
       );
-      const storedFamilyNotifications = window.localStorage.getItem(
-        dismissedFamilyNotificationsKey(userId)
-      );
-      if (storedInvites) {
-        const parsed = JSON.parse(storedInvites) as string[];
-        setDismissedInviteIds(new Set(parsed));
-      } else {
-        setDismissedInviteIds(new Set());
-      }
-      if (storedAppointments) {
-        const parsed = JSON.parse(storedAppointments) as string[];
-        setDismissedAppointmentIds(new Set(parsed));
-      } else {
-        setDismissedAppointmentIds(new Set());
-      }
-      if (storedFamilyNotifications) {
-        const parsed = JSON.parse(storedFamilyNotifications) as string[];
-        setDismissedFamilyNotificationIds(new Set(parsed));
-      } else {
-        setDismissedFamilyNotificationIds(new Set());
+      setSeenNotificationIds(new Set(parsedSeenNotifications));
+      setHydratedDismissedInvitesKey(primaryDismissedInvitesKey);
+      setHydratedDismissedAppointmentsKey(primaryDismissedAppointmentsKey);
+      setHydratedDismissedFamilyKey(primaryDismissedFamilyKey);
+      if (
+        profileId &&
+        !storedSeenNotificationsPrimary &&
+        parsedSeenNotifications.length > 0
+      ) {
+        window.localStorage.setItem(
+          primarySeenNotificationsKey,
+          JSON.stringify(parsedSeenNotifications)
+        );
       }
     } catch {
       setDismissedInviteIds(new Set());
       setDismissedAppointmentIds(new Set());
       setDismissedFamilyNotificationIds(new Set());
+      setSeenNotificationIds(new Set());
     }
+    setHasHydratedDismissedNotifications(true);
+    setHasHydratedSeenNotifications(true);
   }, [profileId, userId]);
 
   useEffect(() => {
-    if (!userId || typeof window === "undefined") return;
+    if (!hasHydratedDismissedNotifications || !userId || typeof window === "undefined") return;
+    const storageKey = dismissedInvitesKey(userId, profileId);
+    if (hydratedDismissedInvitesKey !== storageKey) return;
+    const merged = new Set(parseStoredStringArray(window.localStorage.getItem(storageKey)));
+    dismissedInviteIds.forEach((id) => merged.add(id));
+    if (merged.size > 0) {
+      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(merged)));
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [
+    dismissedInviteIds,
+    hasHydratedDismissedNotifications,
+    hydratedDismissedInvitesKey,
+    profileId,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (!hasHydratedDismissedNotifications || !userId || typeof window === "undefined") return;
+    const storageKey = dismissedAppointmentsKey(userId, profileId);
+    if (hydratedDismissedAppointmentsKey !== storageKey) return;
+    const merged = new Set(parseStoredStringArray(window.localStorage.getItem(storageKey)));
+    dismissedAppointmentIds.forEach((id) => merged.add(id));
+    if (merged.size > 0) {
+      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(merged)));
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [
+    dismissedAppointmentIds,
+    hasHydratedDismissedNotifications,
+    hydratedDismissedAppointmentsKey,
+    profileId,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (!hasHydratedDismissedNotifications || !userId || typeof window === "undefined") return;
+    const storageKey = dismissedFamilyNotificationsKey(userId);
+    if (hydratedDismissedFamilyKey !== storageKey) return;
+    const merged = new Set(parseStoredStringArray(window.localStorage.getItem(storageKey)));
+    dismissedFamilyNotificationIds.forEach((id) => merged.add(id));
+    if (merged.size > 0) {
+      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(merged)));
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [
+    dismissedFamilyNotificationIds,
+    hasHydratedDismissedNotifications,
+    hydratedDismissedFamilyKey,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (!hasHydratedSeenNotifications || !userId || typeof window === "undefined") return;
     window.localStorage.setItem(
-      dismissedInvitesKey(userId, profileId),
-      JSON.stringify(Array.from(dismissedInviteIds))
+      seenNotificationsKey(userId, profileId),
+      JSON.stringify(Array.from(seenNotificationIds))
     );
-  }, [dismissedInviteIds, profileId, userId]);
+  }, [hasHydratedSeenNotifications, profileId, seenNotificationIds, userId]);
 
   useEffect(() => {
     if (!userId || typeof window === "undefined") return;
-    window.localStorage.setItem(
-      dismissedAppointmentsKey(userId, profileId),
-      JSON.stringify(Array.from(dismissedAppointmentIds))
-    );
-  }, [dismissedAppointmentIds, profileId, userId]);
+    setHasHydratedSeenLogs(false);
+    setHydratedSeenLogsKey(null);
+    const storageKey = seenLogsKey(userId, profileId);
+    const fallbackKey = seenLogsKey(userId);
+    const primaryStored = window.localStorage.getItem(storageKey);
+    const fallbackStored =
+      profileId && !primaryStored ? window.localStorage.getItem(fallbackKey) : null;
+    const stored = primaryStored ?? fallbackStored;
+    const parsedSeenLogs = parseStoredLogSeenValue(stored);
+    setSeenLogIds(new Set(parsedSeenLogs));
+    if (profileId && !primaryStored && parsedSeenLogs.length > 0) {
+      window.localStorage.setItem(storageKey, JSON.stringify(parsedSeenLogs));
+    }
+    setHydratedSeenLogsKey(storageKey);
+    setHasHydratedSeenLogs(true);
+  }, [profileId, userId]);
 
   useEffect(() => {
-    if (!userId || typeof window === "undefined") return;
-    window.localStorage.setItem(
-      dismissedFamilyNotificationsKey(userId),
-      JSON.stringify(Array.from(dismissedFamilyNotificationIds))
-    );
-  }, [dismissedFamilyNotificationIds, userId]);
+    if (!hasHydratedSeenLogs || !userId || typeof window === "undefined") return;
+    const storageKey = seenLogsKey(userId, profileId);
+    if (hydratedSeenLogsKey !== storageKey) return;
+    const storedSeenLogs = parseStoredLogSeenValue(window.localStorage.getItem(storageKey));
+    const mergedSeenLogs = new Set(storedSeenLogs);
+    seenLogIds.forEach((id) => mergedSeenLogs.add(id));
+    if (mergedSeenLogs.size > 0) {
+      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(mergedSeenLogs)));
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [hasHydratedSeenLogs, hydratedSeenLogsKey, profileId, seenLogIds, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -223,11 +403,18 @@ export function NotificationsPanel({
             createdAt: string;
           }>;
         } = await response.json();
+        const nowTime = Date.now();
 
         if (!isActive) return;
         const pendingIncoming =
           data.incoming
-            ?.filter((invite) => invite.status === "pending")
+            ?.filter((invite) => {
+              if (invite.status !== "pending") return false;
+              const createdTime = Date.parse(invite.createdAt);
+              if (!Number.isFinite(createdTime)) return false;
+              const ageMs = nowTime - createdTime;
+              return ageMs >= 0 && ageMs <= ONE_DAY_MS;
+            })
             .map((invite) => ({
               id: invite.id,
               name: invite.displayName,
@@ -583,7 +770,7 @@ export function NotificationsPanel({
         setFamilyAppointments(appointmentNotifications);
         setFamilyVaultUpdates(vaultNotifications);
         setFamilyMedicationStarts(medicationNotifications);
-      } catch (error) {
+      } catch {
         if (!isActive) return;
         setFamilyNotificationsError("Unable to load family notifications.");
         setFamilyJoinRequests([]);
@@ -606,6 +793,98 @@ export function NotificationsPanel({
       clearInterval(interval);
     };
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setSharedFamilyActivityLogs([]);
+      return;
+    }
+
+    let isActive = true;
+
+    const fetchSharedFamilyActivity = async () => {
+      try {
+        const response = await fetch("/api/care-circle/activity?limit=40&sinceHours=24", {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error("Unable to load family activity notifications.");
+        }
+        const payload = (await response.json()) as { logs?: SharedActivityLogRow[] };
+        if (!isActive) return;
+        setSharedFamilyActivityLogs(Array.isArray(payload.logs) ? payload.logs : []);
+      } catch {
+        if (!isActive) return;
+        setSharedFamilyActivityLogs([]);
+      }
+    };
+
+    void fetchSharedFamilyActivity();
+    const interval = setInterval(fetchSharedFamilyActivity, 120_000);
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadInitialLogs = async () => {
+      if (!profileId) {
+        if (!isActive) return;
+        setActivityLogs([]);
+        setLogsError("");
+        setLogsOffset(0);
+        setLogsHasMore(false);
+        setLogsLoading(false);
+        return;
+      }
+
+      setLogsLoading(true);
+      setLogsError("");
+      try {
+        const { data, error } = await supabase
+          .from("profile_activity_logs")
+          .select(
+            "id, profile_id, source, domain, action, actor_user_id, actor_display_name, entity_id, entity_label, metadata, created_at"
+          )
+          .eq("profile_id", profileId)
+          .eq("source", "care_circle")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(0, LOGS_PAGE_SIZE);
+
+        if (error) throw error;
+
+        const rows = (data ?? []) as ActivityLogRow[];
+        const hasMore = rows.length > LOGS_PAGE_SIZE;
+        const nextRows = hasMore ? rows.slice(0, LOGS_PAGE_SIZE) : rows;
+
+        if (!isActive) return;
+        setActivityLogs(nextRows);
+        setLogsOffset(nextRows.length);
+        setLogsHasMore(hasMore);
+      } catch {
+        if (!isActive) return;
+        setActivityLogs([]);
+        setLogsOffset(0);
+        setLogsHasMore(false);
+        setLogsError("Unable to load logs.");
+      } finally {
+        if (isActive) {
+          setLogsLoading(false);
+        }
+      }
+    };
+
+    void loadInitialLogs();
+
+    return () => {
+      isActive = false;
+    };
+  }, [profileId, userId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -643,20 +922,51 @@ export function NotificationsPanel({
     return `In ${diffHours}h`;
   };
 
+  const persistDismissedNotification = async (notificationId: string) => {
+    if (!userId) return;
+    try {
+      await fetch("/api/notifications/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notificationIds: [notificationId],
+          dismissed: true,
+          read: true,
+        }),
+      });
+    } catch {
+      // Non-blocking state sync.
+    }
+  };
+
   const dismissInvite = (id: string) => {
+    const notificationId = inviteNotificationId(id);
     setDismissedInviteIds((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
+    setServerDismissedNotificationIds((prev) => {
+      const next = new Set(prev);
+      next.add(notificationId);
+      return next;
+    });
+    void persistDismissedNotification(notificationId);
   };
 
   const dismissAppointment = (id: string) => {
+    const notificationId = selfAppointmentNotificationId(id);
     setDismissedAppointmentIds((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
+    setServerDismissedNotificationIds((prev) => {
+      const next = new Set(prev);
+      next.add(notificationId);
+      return next;
+    });
+    void persistDismissedNotification(notificationId);
   };
 
   const dismissFamilyNotification = (id: string) => {
@@ -665,6 +975,12 @@ export function NotificationsPanel({
       next.add(id);
       return next;
     });
+    setServerDismissedNotificationIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    void persistDismissedNotification(id);
   };
 
   const formatStartDate = (value: string) => {
@@ -672,6 +988,166 @@ export function NotificationsPanel({
     if (Number.isNaN(parsed.getTime())) return value;
     return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
+
+  const getMetadataText = (metadata: Record<string, unknown>, key: string) => {
+    const value = metadata[key];
+    return typeof value === "string" ? value.trim() : "";
+  };
+
+  const getLogCardTheme = (domain: ActivityLogDomain) => {
+    if (domain === "vault") {
+      return {
+        cardClassName:
+          "group relative w-full rounded-2xl border border-slate-100 bg-sky-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm",
+        ringClassName: "group-hover:ring-sky-100",
+        iconClassName: "bg-sky-100 text-sky-700",
+        Icon: FileText,
+      };
+    }
+    if (domain === "medication") {
+      return {
+        cardClassName:
+          "group relative w-full rounded-2xl border border-slate-100 bg-emerald-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm",
+        ringClassName: "group-hover:ring-emerald-100",
+        iconClassName: "bg-emerald-100 text-emerald-700",
+        Icon: Pill,
+      };
+    }
+    return {
+      cardClassName:
+        "group relative w-full rounded-2xl border border-slate-100 bg-amber-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm",
+      ringClassName: "group-hover:ring-amber-100",
+      iconClassName: "bg-amber-100 text-amber-700",
+      Icon: Calendar,
+    };
+  };
+
+  const getLogText = (log: ActivityLogRow) => {
+    const metadata =
+      log.metadata && typeof log.metadata === "object"
+        ? (log.metadata as Record<string, unknown>)
+        : {};
+    const actor = log.actor_display_name?.trim() || "Care circle member";
+    const entityLabel = log.entity_label?.trim() || "item";
+
+    if (log.domain === "vault") {
+      const folder = getMetadataText(metadata, "folder");
+      const typedFolder = folder as FamilyVaultFile["folder"];
+      const folderLabel =
+        folder && typedFolder in vaultFolderLabels ? vaultFolderLabels[typedFolder] : "Vault";
+      if (log.action === "upload") {
+        const fileName = getMetadataText(metadata, "fileName") || entityLabel;
+        return {
+          title: `${actor} uploaded a file`,
+          subtitle: `${fileName} · ${folderLabel}`,
+        };
+      }
+      if (log.action === "rename") {
+        const fromName = getMetadataText(metadata, "fromName") || "Previous name";
+        const toName = getMetadataText(metadata, "toName") || entityLabel;
+        return {
+          title: `${actor} renamed a file`,
+          subtitle: `${fromName} → ${toName}`,
+        };
+      }
+      const fileName = getMetadataText(metadata, "fileName") || entityLabel;
+      return {
+        title: `${actor} deleted a file`,
+        subtitle: `${fileName} · ${folderLabel}`,
+      };
+    }
+
+    if (log.domain === "medication") {
+      const medicationName = getMetadataText(metadata, "name") || entityLabel;
+      if (log.action === "add") {
+        return {
+          title: `${actor} added medication`,
+          subtitle: medicationName,
+        };
+      }
+      if (log.action === "update") {
+        return {
+          title: `${actor} updated medication`,
+          subtitle: medicationName,
+        };
+      }
+      return {
+        title: `${actor} deleted medication`,
+        subtitle: medicationName,
+      };
+    }
+
+    const appointmentTitle = getMetadataText(metadata, "title") || entityLabel;
+    if (log.action === "add") {
+      return {
+        title: `${actor} added appointment`,
+        subtitle: appointmentTitle,
+      };
+    }
+    if (log.action === "update") {
+      return {
+        title: `${actor} updated appointment`,
+        subtitle: appointmentTitle,
+      };
+    }
+    return {
+      title: `${actor} deleted appointment`,
+      subtitle: appointmentTitle,
+    };
+  };
+
+  const loadMoreLogs = async () => {
+    if (!profileId || logsLoading || logsLoadingMore || !logsHasMore) return;
+
+    setLogsLoadingMore(true);
+    setLogsError("");
+    try {
+      const { data, error } = await supabase
+        .from("profile_activity_logs")
+        .select(
+          "id, profile_id, source, domain, action, actor_user_id, actor_display_name, entity_id, entity_label, metadata, created_at"
+        )
+        .eq("profile_id", profileId)
+        .eq("source", "care_circle")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(logsOffset, logsOffset + LOGS_PAGE_SIZE);
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as ActivityLogRow[];
+      const hasMore = rows.length > LOGS_PAGE_SIZE;
+      const nextRows = hasMore ? rows.slice(0, LOGS_PAGE_SIZE) : rows;
+
+      setActivityLogs((prev) => {
+        const known = new Set(prev.map((entry) => entry.id));
+        const uniqueNextRows = nextRows.filter((entry) => !known.has(entry.id));
+        return [...prev, ...uniqueNextRows];
+      });
+      setLogsOffset((prev) => prev + nextRows.length);
+      setLogsHasMore(hasMore);
+    } catch {
+      setLogsError("Unable to load more logs.");
+    } finally {
+      setLogsLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "logs") return;
+    if (!hasHydratedSeenLogs) return;
+    if (logsLoading || activityLogs.length === 0) return;
+    setSeenLogIds((previous) => {
+      const next = new Set(previous);
+      let changed = false;
+      activityLogs.forEach((log) => {
+        if (!log.id || next.has(log.id)) return;
+        next.add(log.id);
+        changed = true;
+      });
+      return changed ? next : previous;
+    });
+  }, [activeTab, activityLogs, hasHydratedSeenLogs, logsLoading]);
 
   const upcomingAppointments = appointments
     .map((appointment) => {
@@ -682,15 +1158,25 @@ export function NotificationsPanel({
       return { appointment, dateTime, diffMs };
     })
     .filter((item): item is { appointment: Appointment; dateTime: Date; diffMs: number } => Boolean(item))
-    .filter(({ appointment }) => !dismissedAppointmentIds.has(appointment.id))
+    .filter(({ appointment }) => {
+      if (dismissedAppointmentIds.has(appointment.id)) return false;
+      return !serverDismissedNotificationIds.has(selfAppointmentNotificationId(appointment.id));
+    })
     .sort((a, b) => a.diffMs - b.diffMs);
 
-  const visibleCareCircleInvites = careCircleInvites.filter((invite) => !dismissedInviteIds.has(invite.id));
+  const visibleCareCircleInvites = careCircleInvites.filter((invite) => {
+    if (dismissedInviteIds.has(invite.id)) return false;
+    return !serverDismissedNotificationIds.has(inviteNotificationId(invite.id));
+  });
   const visibleFamilyJoinRequests = familyJoinRequests.filter(
-    (request) => !dismissedFamilyNotificationIds.has(request.id)
+    (request) =>
+      !dismissedFamilyNotificationIds.has(request.id) &&
+      !serverDismissedNotificationIds.has(request.id)
   );
   const visibleFamilyAcceptance =
-    familyAcceptance && !dismissedFamilyNotificationIds.has(familyAcceptance.id)
+    familyAcceptance &&
+    !dismissedFamilyNotificationIds.has(familyAcceptance.id) &&
+    !serverDismissedNotificationIds.has(familyAcceptance.id)
       ? [familyAcceptance]
       : [];
   const visibleFamilyAppointments = familyAppointments
@@ -698,21 +1184,121 @@ export function NotificationsPanel({
       const diffMs = dateTime.getTime() - now.getTime();
       return diffMs > 0 && diffMs <= ONE_DAY_MS;
     })
-    .filter(({ id }) => !dismissedFamilyNotificationIds.has(id));
+    .filter(
+      ({ id }) => !dismissedFamilyNotificationIds.has(id) && !serverDismissedNotificationIds.has(id)
+    );
   const visibleFamilyVaultUpdates = familyVaultUpdates.filter((file) => {
     if (!file.createdAt) return false;
     const createdTime = new Date(file.createdAt).getTime();
     if (Number.isNaN(createdTime)) return false;
     if (Date.now() - createdTime > ONE_DAY_MS) return false;
-    return !dismissedFamilyNotificationIds.has(file.id);
+    return !dismissedFamilyNotificationIds.has(file.id) && !serverDismissedNotificationIds.has(file.id);
   });
   const visibleFamilyMedicationStarts = familyMedicationStarts.filter((medication) => {
     const start = new Date(`${medication.startDate}T00:00:00`);
     if (Number.isNaN(start.getTime())) return false;
     const diffMs = Date.now() - start.getTime();
     if (diffMs < 0 || diffMs > ONE_DAY_MS) return false;
-    return !dismissedFamilyNotificationIds.has(medication.id);
+    return (
+      !dismissedFamilyNotificationIds.has(medication.id) &&
+      !serverDismissedNotificationIds.has(medication.id)
+    );
   });
+  const hasLegacyFamilyActivity =
+    visibleFamilyAppointments.length > 0 ||
+    visibleFamilyVaultUpdates.length > 0 ||
+    visibleFamilyMedicationStarts.length > 0;
+  const recentFamilyActivityLogs =
+    sharedFamilyActivityLogs.length > 0
+      ? sharedFamilyActivityLogs
+      : hasLegacyFamilyActivity
+        ? []
+        : activityLogs
+            .filter((log) => {
+              const createdTime = Date.parse(log.created_at);
+              if (!Number.isFinite(createdTime)) return false;
+              const ageMs = now.getTime() - createdTime;
+              return ageMs >= 0 && ageMs <= ONE_DAY_MS;
+            })
+            .slice(0, 8);
+  const visibleRecentFamilyActivityLogs = recentFamilyActivityLogs.filter(
+    (log) => {
+      const id = familyActivityNotificationId(log.id);
+      return !dismissedFamilyNotificationIds.has(id) && !serverDismissedNotificationIds.has(id);
+    }
+  );
+  const notificationIds = Array.from(
+    new Set([
+      ...upcomingAppointments.map(({ appointment }) => selfAppointmentNotificationId(appointment.id)),
+      ...visibleFamilyJoinRequests.map((request) => request.id),
+      ...visibleFamilyAcceptance.map((acceptance) => acceptance.id),
+      ...visibleFamilyAppointments.map(({ id }) => id),
+      ...visibleFamilyVaultUpdates.map((file) => file.id),
+      ...visibleFamilyMedicationStarts.map((medication) => medication.id),
+      ...visibleRecentFamilyActivityLogs.map((log) => familyActivityNotificationId(log.id)),
+      ...visibleCareCircleInvites.map((invite) => inviteNotificationId(invite.id)),
+    ])
+  );
+
+  useEffect(() => {
+    setServerDismissedNotificationIds(new Set());
+  }, [profileId, userId]);
+
+  useEffect(() => {
+    if (!userId || notificationIds.length === 0) return;
+    let isActive = true;
+
+    const loadDismissedState = async () => {
+      try {
+        const encodedIds = notificationIds.map((id) => encodeURIComponent(id)).join(",");
+        const response = await fetch(`/api/notifications/state?ids=${encodedIds}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          states?: Array<{ notification_id: string; dismissed_at: string | null }>;
+        };
+        if (!isActive) return;
+        const dismissedIds = new Set<string>();
+        (payload.states ?? []).forEach((state) => {
+          if (!state?.notification_id) return;
+          if (!state.dismissed_at) return;
+          dismissedIds.add(state.notification_id);
+        });
+        setServerDismissedNotificationIds((previous) => {
+          const next = new Set(previous);
+          dismissedIds.forEach((id) => next.add(id));
+          return next;
+        });
+      } catch {
+        // Non-blocking state sync.
+      }
+    };
+
+    void loadDismissedState();
+
+    return () => {
+      isActive = false;
+    };
+  }, [notificationIds, userId]);
+
+  useEffect(() => {
+    if (activeTab !== "notifications") return;
+    if (!hasHydratedSeenNotifications) return;
+    if (notificationIds.length === 0) return;
+
+    setSeenNotificationIds((previous) => {
+      const next = new Set(previous);
+      let changed = false;
+      notificationIds.forEach((id) => {
+        if (next.has(id)) return;
+        next.add(id);
+        changed = true;
+      });
+      return changed ? next : previous;
+    });
+  }, [activeTab, hasHydratedSeenNotifications, notificationIds]);
+
   const totalNotifications =
     visibleCareCircleInvites.length +
     upcomingAppointments.length +
@@ -720,9 +1306,21 @@ export function NotificationsPanel({
     visibleFamilyAcceptance.length +
     visibleFamilyAppointments.length +
     visibleFamilyVaultUpdates.length +
-    visibleFamilyMedicationStarts.length;
+    visibleFamilyMedicationStarts.length +
+    visibleRecentFamilyActivityLogs.length;
+  const unreadNotificationsCount = notificationIds.reduce(
+    (count, id) => (seenNotificationIds.has(id) ? count : count + 1),
+    0
+  );
+  const unreadLogsCount = activityLogs.reduce(
+    (count, log) => (seenLogIds.has(log.id) ? count : count + 1),
+    0
+  );
   const isLoading = notificationsLoading || familyNotificationsLoading;
   const notificationError = notificationsError || familyNotificationsError;
+  const hasUnreadNotifications =
+    hasHydratedSeenNotifications && unreadNotificationsCount > 0;
+  const hasUnreadLogs = hasHydratedSeenLogs && unreadLogsCount > 0;
   const wrapperClassName =
     variant === "modal" ? "flex justify-center" : "hidden lg:flex justify-end";
   const panelClassName =
@@ -733,296 +1331,449 @@ export function NotificationsPanel({
   return (
     <div className={wrapperClassName}>
       <div className={`bg-white rounded-3xl shadow-lg transition border flex flex-col ${panelClassName}`}>
-        <div className="flex items-center gap-3 px-6 py-5 border-b">
-          <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
-            <Bell size={18} className="text-teal-600" />
+        <div className="px-6 py-5 border-b">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+              <Bell size={18} className="text-teal-600" />
+            </div>
+            <h3 className="font-bold text-lg">Notifications</h3>
+            {hasHydratedSeenNotifications && unreadNotificationsCount > 0 && (
+              <span className="ml-auto rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                {unreadNotificationsCount} unread
+              </span>
+            )}
           </div>
-          <h3 className="font-bold text-lg">Notifications</h3>
-          {totalNotifications > 0 && (
-            <span className="ml-auto rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
-              {totalNotifications} new
-            </span>
-          )}
+          <div className="mt-4 flex rounded-xl bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("notifications")}
+              className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                activeTab === "notifications"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+              aria-pressed={activeTab === "notifications"}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span>Notifications</span>
+                {hasUnreadNotifications ? (
+                  <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
+                ) : null}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("logs")}
+              className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                activeTab === "logs"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+              aria-pressed={activeTab === "logs"}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span>Logs</span>
+                {hasUnreadLogs ? (
+                  <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
+                ) : null}
+              </span>
+            </button>
+          </div>
         </div>
-        {isLoading && totalNotifications === 0 ? (
+        {activeTab === "notifications" ? (
+          isLoading && totalNotifications === 0 ? (
+            <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
+              Checking for updates...
+            </div>
+          ) : notificationError && totalNotifications === 0 ? (
+            <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-rose-600">
+              {notificationError}
+            </div>
+          ) : totalNotifications === 0 ? (
+            <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
+              No notifications yet
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {upcomingAppointments.map(({ appointment, dateTime }) => (
+                <button
+                  key={`appointment-${appointment.id}`}
+                  type="button"
+                  onClick={() => router.push("/app/homepage")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-amber-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-amber-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss appointment notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissAppointment(appointment.id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
+                      <p className="text-xs text-slate-600">
+                        {appointment.title || appointment.type} ·{" "}
+                        {dateTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-slate-500">{formatTimeUntil(dateTime)}</span>
+                  </div>
+                </button>
+              ))}
+              {visibleFamilyJoinRequests.map((request) => (
+                <button
+                  key={request.id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-indigo-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-indigo-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss family join request notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissFamilyNotification(request.id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Family join request</p>
+                      <p className="text-xs text-slate-500">{request.requesterName} wants to join</p>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {formatRelativeTimestamp(request.createdAt)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {visibleFamilyAcceptance.map((acceptance) => (
+                <button
+                  key={acceptance.id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-emerald-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-emerald-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss family acceptance notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissFamilyNotification(acceptance.id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Request approved</p>
+                      <p className="text-xs text-slate-500">
+                        You&apos;re now part of {acceptance.familyName}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {acceptance.createdAt ? formatRelativeTimestamp(acceptance.createdAt) : "Just now"}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {visibleFamilyAppointments.map(({ id, memberName, appointment, dateTime }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-orange-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-orange-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss family appointment notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissFamilyNotification(id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
+                      <p className="text-xs text-slate-600">
+                        {memberName} · {appointment.title || appointment.type} ·{" "}
+                        {dateTime.toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-slate-500">{formatTimeUntil(dateTime)}</span>
+                  </div>
+                </button>
+              ))}
+              {visibleFamilyVaultUpdates.map((file) => (
+                <button
+                  key={file.id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-blue-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-blue-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss vault notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissFamilyNotification(file.id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">New vault document</p>
+                      <p className="text-xs text-slate-500">
+                        {file.memberName} added {file.fileName} · {vaultFolderLabels[file.folder]}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {formatRelativeTimestamp(file.createdAt)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {visibleFamilyMedicationStarts.map((medication) => (
+                <button
+                  key={medication.id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-green-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-green-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss medication notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissFamilyNotification(medication.id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">New medication started</p>
+                      <p className="text-xs text-slate-500">
+                        {medication.memberName} started {medication.medicationName}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {formatStartDate(medication.startDate)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {visibleRecentFamilyActivityLogs.map((log) => {
+                const { cardClassName, ringClassName, iconClassName, Icon } = getLogCardTheme(
+                  log.domain
+                );
+                const { title, subtitle } = getLogText(log);
+                const sharedProfileLabel =
+                  typeof log.profile_label === "string" ? log.profile_label.trim() : "";
+                const subtitleText = sharedProfileLabel
+                  ? `${subtitle} · ${sharedProfileLabel}`
+                  : subtitle;
+                const notificationId = familyActivityNotificationId(log.id);
+                return (
+                  <button
+                    key={notificationId}
+                    type="button"
+                    onClick={() => router.push("/app/carecircle")}
+                    className={cardClassName}
+                  >
+                    <span
+                      className={`pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition ${ringClassName}`}
+                    />
+                    <span className="absolute right-2 top-2">
+                      <span className="inline-flex rounded-full">
+                        <span
+                          role="button"
+                          aria-label="Dismiss family activity notification"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            dismissFamilyNotification(notificationId);
+                          }}
+                          className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                        >
+                          <X size={14} />
+                        </span>
+                      </span>
+                    </span>
+                    <div className="flex items-start justify-between gap-3 pr-8">
+                      <div className="flex items-start gap-3">
+                        <span
+                          className={`mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-lg ${iconClassName}`}
+                        >
+                          <Icon size={14} />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{title}</p>
+                          <p className="text-xs text-slate-500">{subtitleText}</p>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        {formatRelativeTimestamp(log.created_at)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+              {visibleCareCircleInvites.map((invite) => (
+                <button
+                  key={invite.id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle?open=incoming-invites")}
+                  className="group relative w-full rounded-2xl border border-slate-100 bg-slate-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                >
+                  <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-slate-100" />
+                  <span className="absolute right-2 top-2">
+                    <span className="inline-flex rounded-full">
+                      <span
+                        role="button"
+                        aria-label="Dismiss care circle invite notification"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dismissInvite(invite.id);
+                        }}
+                        className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Care circle invite</p>
+                      <p className="text-xs text-slate-500">From {invite.name}</p>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {formatRelativeTimestamp(invite.createdAt)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )
+        ) : !profileId ? (
           <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
-            Checking for updates...
+            Select a profile to view logs.
           </div>
-        ) : notificationError && totalNotifications === 0 ? (
+        ) : logsLoading && activityLogs.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
+            Loading logs...
+          </div>
+        ) : logsError && activityLogs.length === 0 ? (
           <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-rose-600">
-            {notificationError}
+            {logsError}
           </div>
-        ) : totalNotifications === 0 ? (
+        ) : activityLogs.length === 0 ? (
           <div className="flex-1 flex items-center justify-center px-6 py-4 text-sm text-slate-500">
-            No notifications yet
+            No logs yet
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {upcomingAppointments.map(({ appointment, dateTime }) => (
-              <button
-                key={`appointment-${appointment.id}`}
-                type="button"
-                onClick={() => router.push("/app/homepage")}
-                className="group relative w-full rounded-2xl border border-slate-100 bg-amber-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-              >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-amber-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss appointment notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissAppointment(appointment.id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
+            {activityLogs.map((log) => {
+              const { cardClassName, ringClassName, iconClassName, Icon } = getLogCardTheme(
+                log.domain
+              );
+              const { title, subtitle } = getLogText(log);
+              return (
+                <button
+                  key={log.id}
+                  type="button"
+                  onClick={() => router.push("/app/carecircle")}
+                  className={cardClassName}
+                >
+                  <span
+                    className={`pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition ${ringClassName}`}
+                  />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-lg ${iconClassName}`}
+                      >
+                        <Icon size={14} />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{title}</p>
+                        <p className="text-xs text-slate-500">{subtitle}</p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {formatRelativeTimestamp(log.created_at)}
                     </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
-                    <p className="text-xs text-slate-600">
-                      {appointment.title || appointment.type} · {dateTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                    </p>
                   </div>
-                  <span className="text-[11px] text-slate-500">{formatTimeUntil(dateTime)}</span>
-                </div>
-              </button>
-            ))}
-            {visibleFamilyJoinRequests.map((request) => (
+                </button>
+              );
+            })}
+            {logsHasMore ? (
               <button
-                key={request.id}
                 type="button"
-                onClick={() => router.push("/app/carecircle")}
-                className="group relative w-full rounded-2xl border border-slate-100 bg-indigo-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
+                onClick={loadMoreLogs}
+                disabled={logsLoadingMore}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-indigo-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss family join request notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissFamilyNotification(request.id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">Family join request</p>
-                    <p className="text-xs text-slate-500">
-                      {request.requesterName} wants to join
-                    </p>
-                  </div>
-                  <span className="text-[11px] text-slate-400">
-                    {formatRelativeTimestamp(request.createdAt)}
-                  </span>
-                </div>
+                {logsLoadingMore ? "Loading..." : "Load more"}
               </button>
-            ))}
-            {visibleFamilyAcceptance.map((acceptance) => (
-              <button
-                key={acceptance.id}
-                type="button"
-                onClick={() => router.push("/app/carecircle")}
-                className="group relative w-full rounded-2xl border border-slate-100 bg-emerald-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-              >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-emerald-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss family acceptance notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissFamilyNotification(acceptance.id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">Request approved</p>
-                    <p className="text-xs text-slate-500">
-                      You&apos;re now part of {acceptance.familyName}
-                    </p>
-                  </div>
-                  <span className="text-[11px] text-slate-400">
-                    {acceptance.createdAt
-                      ? formatRelativeTimestamp(acceptance.createdAt)
-                      : "Just now"}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {visibleFamilyAppointments.map(({ id, memberName, appointment, dateTime }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => router.push("/app/carecircle")}
-                className="group relative w-full rounded-2xl border border-slate-100 bg-orange-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-              >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-orange-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss family appointment notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissFamilyNotification(id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">Upcoming appointment</p>
-                    <p className="text-xs text-slate-600">
-                      {memberName} · {appointment.title || appointment.type} ·{" "}
-                      {dateTime.toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                  <span className="text-[11px] text-slate-500">
-                    {formatTimeUntil(dateTime)}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {visibleFamilyVaultUpdates.map((file) => (
-              <button
-                key={file.id}
-                type="button"
-                onClick={() =>
-                  router.push(
-                    '/app/carecircle'
-                  )
-                }
-                className="group relative w-full rounded-2xl border border-slate-100 bg-blue-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-              >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-blue-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss vault notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissFamilyNotification(file.id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">New vault document</p>
-                    <p className="text-xs text-slate-500">
-                      {file.memberName} added {file.fileName} · {vaultFolderLabels[file.folder]}
-                    </p>
-                  </div>
-                  <span className="text-[11px] text-slate-400">
-                    {formatRelativeTimestamp(file.createdAt)}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {visibleFamilyMedicationStarts.map((medication) => (
-              <button
-                key={medication.id}
-                type="button"
-                onClick={() => router.push("/app/carecircle")}
-                className="group relative w-full rounded-2xl border border-slate-100 bg-green-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-              >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-green-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss medication notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissFamilyNotification(medication.id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">New medication started</p>
-                    <p className="text-xs text-slate-500">
-                      {medication.memberName} started {medication.medicationName}
-                    </p>
-                  </div>
-                  <span className="text-[11px] text-slate-400">
-                    {formatStartDate(medication.startDate)}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {visibleCareCircleInvites.map((invite) => (
-              <button
-                key={invite.id}
-                type="button"
-                onClick={() => router.push("/app/carecircle?open=incoming-invites")}
-                className="group relative w-full rounded-2xl border border-slate-100 bg-slate-50/80 p-3 text-left transition hover:bg-white hover:shadow-sm"
-              >
-                <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-slate-100" />
-                <span className="absolute right-2 top-2">
-                  <span className="inline-flex rounded-full">
-                    <span
-                      role="button"
-                      aria-label="Dismiss care circle invite notification"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissInvite(invite.id);
-                      }}
-                      className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-600 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
-                  </span>
-                </span>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">Care circle invite</p>
-                    <p className="text-xs text-slate-500">From {invite.name}</p>
-                  </div>
-                  <span className="text-[11px] text-slate-400">
-                    {formatRelativeTimestamp(invite.createdAt)}
-                  </span>
-                </div>
-              </button>
-            ))}
+            ) : null}
+            {logsError ? (
+              <p className="text-center text-xs text-rose-600">{logsError}</p>
+            ) : null}
           </div>
         )}
       </div>

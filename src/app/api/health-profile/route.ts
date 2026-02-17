@@ -14,9 +14,19 @@ type ProfilePayload = {
   allergies: string[];
   ongoingTreatments: string[];
   currentMedication: {
+    id?: string;
     name: string;
     dosage?: string;
+    purpose?: string;
     frequency?: string;
+    timesPerDay?: number | null;
+    startDate?: string;
+    endDate?: string;
+    logs?: {
+      medicationId?: string;
+      timestamp?: string;
+      taken?: boolean;
+    }[];
   }[];
 
   previousDiagnosedConditions: string[];
@@ -53,6 +63,64 @@ function computeBMI(heightCm: number | null, weightKg: number | null): number | 
 
 const cleanStringList = (values: string[] | undefined) =>
   Array.isArray(values) ? values.map((item) => item.trim()).filter(Boolean) : [];
+
+const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const MEDICATION_FREQUENCY_TIMES: Record<string, number> = {
+  once_daily: 1,
+  twice_daily: 2,
+  three_times_daily: 3,
+  four_times_daily: 4,
+  every_4_hours: 6,
+  every_6_hours: 4,
+  every_8_hours: 3,
+  every_12_hours: 2,
+  as_needed: 0,
+  with_meals: 3,
+  before_bed: 1,
+};
+
+const resolveTimesPerDay = (frequency: string, rawTimesPerDay: number | null | undefined) => {
+  if (typeof rawTimesPerDay === "number" && Number.isFinite(rawTimesPerDay) && rawTimesPerDay >= 0) {
+    return Math.floor(rawTimesPerDay);
+  }
+  if (frequency in MEDICATION_FREQUENCY_TIMES) {
+    return MEDICATION_FREQUENCY_TIMES[frequency];
+  }
+  return 1;
+};
+
+type MedicationLog = {
+  medicationId: string;
+  timestamp: string;
+  taken: boolean;
+};
+
+const normalizeMedicationLogs = (
+  logs: {
+    medicationId?: string;
+    timestamp?: string;
+    taken?: boolean;
+  }[] | undefined,
+  medicationId: string
+): MedicationLog[] =>
+  Array.isArray(logs)
+    ? logs
+        .map((log) => ({
+          medicationId:
+            typeof log.medicationId === "string" && log.medicationId.trim()
+              ? log.medicationId.trim()
+              : medicationId,
+          timestamp:
+            typeof log.timestamp === "string" && log.timestamp.trim()
+              ? log.timestamp.trim()
+              : "",
+          taken: typeof log.taken === "boolean" ? log.taken : null,
+        }))
+        .filter(
+          (log): log is MedicationLog => Boolean(log.timestamp) && log.taken !== null
+        )
+    : [];
 
 const PROFILE_MIGRATION_HINT =
   "Profile-based DB migration is incomplete. Run supabase/migrations/20260213170000_profile_based_rls_migration.sql and ensure profile_id unique constraints exist.";
@@ -173,15 +241,57 @@ export async function POST(req: Request) {
     const childhoodIllness = cleanStringList(body.childhoodIllness);
     const longTermTreatments = cleanStringList(body.longTermTreatments);
 
+    const medicationStartDate = new Date().toISOString().split("T")[0];
     const currentMedication = Array.isArray(body.currentMedication)
       ? body.currentMedication
-        .map((item) => ({
-          name: item.name?.trim() || "",
-          dosage: item.dosage?.trim() || "",
-          frequency: item.frequency?.trim() || "",
-        }))
-        .filter((item) => item.name && item.dosage && item.frequency)
+          .map((item) => {
+            const id =
+              typeof item.id === "string" && item.id.trim() ? item.id.trim() : randomUUID();
+            const name = item.name?.trim() || "";
+            const dosage = item.dosage?.trim() || "";
+            const purpose = item.purpose?.trim() || "";
+            const frequency = item.frequency?.trim() || "";
+            const startDate =
+              typeof item.startDate === "string" && DATE_ONLY_REGEX.test(item.startDate)
+                ? item.startDate
+                : medicationStartDate;
+            const endDate =
+              typeof item.endDate === "string" && DATE_ONLY_REGEX.test(item.endDate)
+                ? item.endDate
+                : undefined;
+            const timesPerDay = resolveTimesPerDay(frequency, item.timesPerDay);
+            const logs = normalizeMedicationLogs(item.logs, id);
+            return {
+              id,
+              name,
+              dosage,
+              purpose,
+              frequency,
+              timesPerDay,
+              startDate,
+              endDate,
+              logs,
+            };
+          })
+          .filter((item) => item.name || item.dosage || item.frequency || item.purpose)
       : [];
+
+    const hasIncompleteMedication = currentMedication.some(
+      (item) => !item.name || !item.dosage || !item.frequency
+    );
+    if (hasIncompleteMedication) {
+      return NextResponse.json(
+        {
+          error: "Each medication entry requires name, dosage, and frequency.",
+          message: "Each medication entry requires name, dosage, and frequency.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const medicationsForUser = currentMedication.filter(
+      (item) => item.name && item.dosage && item.frequency
+    );
 
     const pastSurgeries = Array.isArray(body.pastSurgeries)
       ? body.pastSurgeries
@@ -210,7 +320,13 @@ export async function POST(req: Request) {
       current_diagnosed_condition: currentDiagnosedCondition.length ? currentDiagnosedCondition : null,
       allergies: allergies.length ? allergies : null,
       ongoing_treatments: ongoingTreatments.length ? ongoingTreatments : null,
-      current_medication: currentMedication.length ? currentMedication : null,
+      current_medication: medicationsForUser.length
+        ? medicationsForUser.map((item) => ({
+            name: item.name,
+            dosage: item.dosage,
+            frequency: item.frequency,
+          }))
+        : null,
       previous_diagnosed_conditions: previousDiagnosedConditions.length ? previousDiagnosedConditions : null,
       past_surgeries: pastSurgeries.length ? pastSurgeries : null,
       childhood_illness: childhoodIllness.length ? childhoodIllness : null,
@@ -238,18 +354,6 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ error: upsertErr.message, message: upsertErr.message }, { status: 400 });
     }
-
-    const medicationStartDate = new Date().toISOString().split("T")[0];
-    const medicationsForUser = currentMedication.map((item) => ({
-      id: randomUUID(),
-      name: item.name,
-      dosage: item.dosage,
-      purpose: "",
-      frequency: item.frequency,
-      timesPerDay: 1,
-      startDate: medicationStartDate,
-      logs: [],
-    }));
 
     const medicationPayload = {
       profile_id: verifiedProfileId,
@@ -308,8 +412,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    const message = e?.message || "Server error";
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: message, message }, { status: 500 });
   }
 }

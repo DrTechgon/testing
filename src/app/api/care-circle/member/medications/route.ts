@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import { logCareCircleActivity } from '@/lib/careCircleActivityLogs';
 
 type CareCircleRole = 'family' | 'friend';
 
@@ -36,6 +37,7 @@ type AuthorizedMedicationAccess = {
   adminClient: SupabaseClient;
   ownerProfileId: string;
   ownerUserId: string;
+  actorUserId: string;
 };
 
 type MedicationUpsertPayload = {
@@ -289,6 +291,7 @@ const getAuthorizedMedicationAccess = async (
       adminClient,
       ownerProfileId: link.profile_id,
       ownerUserId: link.requester_id,
+      actorUserId: user.id,
     },
     response: null,
   };
@@ -406,6 +409,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: saveError.message }, { status: 500 });
     }
 
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'medication',
+      action: 'add',
+      entity: {
+        id: nextMedication.id,
+        label: nextMedication.name,
+      },
+      metadata: {
+        name: nextMedication.name,
+        dosage: nextMedication.dosage,
+        frequency: nextMedication.frequency,
+        timesPerDay: nextMedication.timesPerDay ?? null,
+        startDate: nextMedication.startDate ?? null,
+        endDate: nextMedication.endDate ?? null,
+      },
+    });
+
     return NextResponse.json({
       medication: nextMedication,
       medications: nextMedications,
@@ -519,6 +542,26 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ message: saveError.message }, { status: 500 });
     }
 
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'medication',
+      action: 'update',
+      entity: {
+        id: updatedMedication.id,
+        label: updatedMedication.name,
+      },
+      metadata: {
+        name: updatedMedication.name,
+        dosage: updatedMedication.dosage,
+        frequency: updatedMedication.frequency,
+        timesPerDay: updatedMedication.timesPerDay ?? null,
+        startDate: updatedMedication.startDate ?? null,
+        endDate: updatedMedication.endDate ?? null,
+      },
+    });
+
     return NextResponse.json({
       medication: updatedMedication,
       medications: nextMedications,
@@ -554,6 +597,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: context.error.message }, { status: 500 });
     }
 
+    const deletedMedication = context.medications.find((entry) => entry.id === medicationId);
     const nextMedications = context.medications.filter((entry) => entry.id !== medicationId);
     if (nextMedications.length === context.medications.length) {
       return NextResponse.json({ message: 'Medication not found.' }, { status: 404 });
@@ -563,6 +607,24 @@ export async function DELETE(request: Request) {
     if (saveError) {
       return NextResponse.json({ message: saveError.message }, { status: 500 });
     }
+
+    await logCareCircleActivity({
+      adminClient: access.adminClient,
+      profileId: access.ownerProfileId,
+      actorUserId: access.actorUserId,
+      domain: 'medication',
+      action: 'delete',
+      entity: {
+        id: medicationId,
+        label: deletedMedication?.name ?? null,
+      },
+      metadata: {
+        name: deletedMedication?.name ?? null,
+        dosage: deletedMedication?.dosage ?? null,
+        frequency: deletedMedication?.frequency ?? null,
+        startDate: deletedMedication?.startDate ?? null,
+      },
+    });
 
     return NextResponse.json({ deleted: true, medications: nextMedications });
   } catch (error) {
