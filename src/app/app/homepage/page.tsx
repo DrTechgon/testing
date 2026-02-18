@@ -227,19 +227,18 @@ const buildMedicationActivityChanges = (
     "startDate",
     "endDate",
   ] as const;
-  return fields
-    .map((field) => {
+  return fields.reduce<ActivityMetadataChange[]>((changes, field) => {
       const before = normalizeActivityMetadataValue(previousMedication[field] ?? null);
       const after = normalizeActivityMetadataValue(nextMedication[field] ?? null);
-      if (before === after) return null;
-      return {
+      if (before === after) return changes;
+      changes.push({
         field,
         label: getMedicationActivityFieldLabel(field),
         before,
         after,
-      };
-    })
-    .filter((entry): entry is ActivityMetadataChange => entry !== null);
+      });
+      return changes;
+    }, []);
 };
 
 const resolveTimesPerDay = (frequency: string, value: unknown) => {
