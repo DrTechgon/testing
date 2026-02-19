@@ -523,6 +523,38 @@ type SectionHelpButtonProps = {
 function SectionHelpButton({ id, label, description }: SectionHelpButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<{
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
+
+  const updatePopoverPosition = useCallback(() => {
+    if (!containerRef.current || typeof window === 'undefined') return;
+
+    const viewportPadding = 16;
+    const popoverGap = 8;
+    const minWidth = 220;
+    const maxWidth = 320;
+    const rect = containerRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const availableWidth = Math.max(minWidth, viewportWidth - viewportPadding * 2);
+    const width = Math.min(maxWidth, availableWidth);
+    const popoverHeight = popoverRef.current?.offsetHeight ?? 120;
+
+    let left = rect.left + rect.width / 2 - width / 2;
+    left = Math.max(viewportPadding, Math.min(left, viewportWidth - viewportPadding - width));
+
+    let top = rect.bottom + popoverGap;
+    if (top + popoverHeight > viewportHeight - viewportPadding) {
+      top = rect.top - popoverHeight - popoverGap;
+    }
+    top = Math.max(viewportPadding, Math.min(top, viewportHeight - viewportPadding - popoverHeight));
+
+    setPopoverPosition({ left, top, width });
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -548,11 +580,27 @@ function SectionHelpButton({ id, label, description }: SectionHelpButtonProps) {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleViewportChange = () => updatePopoverPosition();
+    updatePopoverPosition();
+
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [isOpen, updatePopoverPosition]);
+
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => {
+          setIsOpen((prev) => !prev);
+        }}
         aria-label={label}
         aria-expanded={isOpen}
         aria-controls={id}
@@ -562,9 +610,19 @@ function SectionHelpButton({ id, label, description }: SectionHelpButtonProps) {
       </button>
       {isOpen ? (
         <div
+          ref={popoverRef}
           id={id}
           role="dialog"
-          className="absolute left-0 top-full z-40 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg shadow-slate-900/10"
+          className="fixed z-40 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg shadow-slate-900/10"
+          style={
+            popoverPosition
+              ? {
+                  left: `${popoverPosition.left}px`,
+                  top: `${popoverPosition.top}px`,
+                  width: `${popoverPosition.width}px`,
+                }
+              : undefined
+          }
         >
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-600">
             Quick help
@@ -1953,9 +2011,6 @@ export default function CareCirclePage() {
               <h1 className="text-3xl md:text-4xl font-semibold text-slate-900 mt-2">
                 {circleData.circleName}
               </h1>
-              <p className="text-slate-500 mt-2">
-                Managed by <span className="font-semibold text-slate-700">{circleData.ownerName}</span>
-              </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <button

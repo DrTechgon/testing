@@ -19,8 +19,6 @@ type Appointment = {
   type: string;
 };
 
-type FamilyRole = "owner" | "member";
-
 type FamilyJoinRequestNotification = {
   id: string;
   requestId: string;
@@ -75,6 +73,15 @@ type FamilyMemberDetailsResponse = {
     name?: string;
     startDate?: string;
   }>;
+};
+
+type CareCircleLinkRow = {
+  id: string;
+  status: string;
+  role: string;
+  displayName: string;
+  createdAt: string;
+  updatedAt: string | null;
 };
 
 type NotificationsPanelProps = {
@@ -615,199 +622,81 @@ export function NotificationsPanel({
       setFamilyNotificationsError("");
       try {
         const nowTime = Date.now();
-        const { data: memberRow, error: memberError } = await supabase
-          .from("family_members")
-          .select("family_id, role")
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        if (memberError && memberError.code !== "PGRST116") {
-          throw memberError;
+        const linksResponse = await fetch("/api/care-circle/links", {
+          cache: "no-store",
+        });
+        if (!linksResponse.ok) {
+          throw new Error("Unable to load care circle links.");
         }
-
-        if (!memberRow?.family_id) {
-          if (!isActive) return;
-          setFamilyJoinRequests([]);
-          setFamilyAcceptance(null);
-          setFamilyAppointments([]);
-          setFamilyVaultUpdates([]);
-          setFamilyMedicationStarts([]);
-          return;
-        }
-
-        const familyId = memberRow.family_id as string;
-        const role = (memberRow.role || "member") as FamilyRole;
-
-        const { data: familyRow } = await supabase
-          .from("families")
-          .select("name")
-          .eq("id", familyId)
-          .maybeSingle();
-        const familyName = familyRow?.name?.trim() || "your family";
-
-        const { data: memberRows, error: membersError } = await supabase
-          .from("family_members")
-          .select("user_id, role")
-          .eq("family_id", familyId);
-
-        if (membersError) throw membersError;
-
-        const memberIds = (memberRows ?? [])
-          .map((row: { user_id: string }) => row.user_id)
-          .filter(Boolean);
-
-        const parseDate = (value: string | null) => {
-          if (!value) return Number.MAX_SAFE_INTEGER;
-          const ts = Date.parse(value);
-          return Number.isFinite(ts) ? ts : Number.MAX_SAFE_INTEGER;
+        const linksPayload = (await linksResponse.json()) as {
+          incoming?: CareCircleLinkRow[];
+          outgoing?: CareCircleLinkRow[];
         };
 
-        const resolveNames = async (accountIds: string[]) => {
-          const ids = Array.from(new Set(accountIds.filter(Boolean)));
-          const resolved = new Map<string, string>();
-          if (ids.length === 0) return resolved;
-
-          const addPreferred = (
-            rows: Array<{
-              account_id: string;
-              display_name: string | null;
-              name: string | null;
-              is_primary: boolean | null;
-              created_at: string | null;
-            }>
-          ) => {
-            const grouped = new Map<string, typeof rows>();
-            rows.forEach((row) => {
-              if (!row.account_id) return;
-              const current = grouped.get(row.account_id) ?? [];
-              current.push(row);
-              grouped.set(row.account_id, current);
-            });
-            grouped.forEach((profiles, accountId) => {
-              const preferred = [...profiles].sort((a, b) => {
-                const primaryDiff = Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary));
-                if (primaryDiff !== 0) return primaryDiff;
-                return parseDate(a.created_at) - parseDate(b.created_at);
-              })[0];
-              const value = preferred?.display_name?.trim() || preferred?.name?.trim() || "Member";
-              resolved.set(accountId, value);
-            });
-          };
-
-          const { data: byUserRows } = await supabase
-            .from("profiles")
-            .select("user_id, display_name, name, is_primary, created_at")
-            .in("user_id", ids);
-          addPreferred(
-            (byUserRows ?? []).map((row) => ({
-              account_id: row.user_id,
-              display_name: row.display_name ?? null,
-              name: row.name ?? null,
-              is_primary: row.is_primary ?? null,
-              created_at: row.created_at ?? null,
-            }))
-          );
-
-          const missing = ids.filter((id) => !resolved.has(id));
-          if (missing.length > 0) {
-            const { data: byAuthRows, error: byAuthError } = await supabase
-              .from("profiles")
-              .select("auth_id, display_name, name, is_primary, created_at")
-              .in("auth_id", missing);
-            const missingAuthColumn =
-              byAuthError?.code === "PGRST204" ||
-              byAuthError?.message?.toLowerCase().includes("auth_id");
-            if (!byAuthError || missingAuthColumn) {
-              addPreferred(
-                (byAuthRows ?? []).map((row) => ({
-                  account_id: row.auth_id,
-                  display_name: row.display_name ?? null,
-                  name: row.name ?? null,
-                  is_primary: row.is_primary ?? null,
-                  created_at: row.created_at ?? null,
-                }))
-              );
-            }
-          }
-
-          return resolved;
-        };
-
-        const nameMap = await resolveNames(memberIds);
-
-        let joinRequestNotifications: FamilyJoinRequestNotification[] = [];
-        if (role === "owner") {
-          const cutoff = new Date(nowTime - ONE_DAY_MS).toISOString();
-          const { data: requestRows, error: requestError } = await supabase
-            .from("family_join_requests")
-            .select("id, requester_id, status, created_at")
-            .eq("family_id", familyId)
-            .eq("status", "pending")
-            .gte("created_at", cutoff)
-            .order("created_at", { ascending: true });
-
-          if (requestError) throw requestError;
-
-          const requesterIds = (requestRows ?? []).map(
-            (row: { requester_id: string }) => row.requester_id
-          );
-          const missingRequesterIds = requesterIds.filter((id) => !nameMap.has(id));
-          if (missingRequesterIds.length > 0) {
-            const requesterMap = await resolveNames(missingRequesterIds);
-            requesterMap.forEach((name, accountId) => {
-              nameMap.set(accountId, name);
-            });
-          }
-
-          joinRequestNotifications = (requestRows ?? []).map(
-            (row: { id: string; requester_id: string; created_at: string }) => ({
-              id: `family-join:${row.id}`,
-              requestId: row.id,
-              requesterId: row.requester_id,
-              requesterName: nameMap.get(row.requester_id) || "Member",
-              createdAt: row.created_at,
-            })
-          );
-        }
-
-        let acceptanceNotification: FamilyAcceptanceNotification | null = null;
-        if (role !== "owner") {
-          const cutoff = new Date(nowTime - ACCEPTED_NOTIFICATION_TTL_MS).toISOString();
-          const { data: approvedRow } = await supabase
-            .from("family_join_requests")
-            .select("id, status, created_at")
-            .eq("requester_id", userId)
-            .eq("family_id", familyId)
-            .eq("status", "approved")
-            .gte("created_at", cutoff)
-            .order("created_at", { ascending: false })
-            .maybeSingle();
-
-          acceptanceNotification = {
-            id: `family-accepted:${familyId}`,
-            familyId,
-            familyName,
-            createdAt: approvedRow?.created_at,
-          };
-        }
-
-        const otherMemberIds = memberIds.filter((id) => id && id !== userId);
+        const incomingFamilyLinks = (linksPayload.incoming ?? []).filter(
+          (link) =>
+            typeof link.id === "string" &&
+            link.id.trim().length > 0 &&
+            link.status === "accepted" &&
+            link.role === "family"
+        );
+        const outgoingFamilyLinks = (linksPayload.outgoing ?? []).filter(
+          (link) =>
+            typeof link.id === "string" &&
+            link.id.trim().length > 0 &&
+            link.status === "accepted" &&
+            link.role === "family"
+        );
 
         const appointmentNotifications: FamilyAppointmentNotification[] = [];
         const medicationNotifications: FamilyMedicationNotification[] = [];
         const vaultNotifications: FamilyVaultNotification[] = [];
+        const joinRequestNotifications: FamilyJoinRequestNotification[] = [];
 
-        if (otherMemberIds.length > 0) {
+        const latestAcceptedOutgoing = outgoingFamilyLinks
+          .map((link) => {
+            const acceptedAt =
+              typeof link.updatedAt === "string" && link.updatedAt.trim()
+                ? link.updatedAt
+                : link.createdAt;
+            const acceptedTime = Date.parse(acceptedAt);
+            if (!Number.isFinite(acceptedTime)) return null;
+            const ageMs = nowTime - acceptedTime;
+            if (ageMs < 0 || ageMs > ACCEPTED_NOTIFICATION_TTL_MS) return null;
+            return { link, acceptedAt, acceptedTime };
+          })
+          .filter(
+            (
+              row
+            ): row is {
+              link: CareCircleLinkRow;
+              acceptedAt: string;
+              acceptedTime: number;
+            } => row !== null
+          )
+          .sort((a, b) => b.acceptedTime - a.acceptedTime)[0];
+
+        const acceptanceNotification: FamilyAcceptanceNotification | null = latestAcceptedOutgoing
+          ? {
+              id: `family-accepted:${latestAcceptedOutgoing.link.id}`,
+              familyId: latestAcceptedOutgoing.link.id,
+              familyName:
+                latestAcceptedOutgoing.link.displayName?.trim() || "your care circle member",
+              createdAt: latestAcceptedOutgoing.acceptedAt,
+            }
+          : null;
+
+        if (incomingFamilyLinks.length > 0) {
           const detailResults = await Promise.all(
-            otherMemberIds.map(async (memberId) => {
+            incomingFamilyLinks.map(async (link) => {
               try {
                 const response = await fetch(
-                  `/api/family/member/details?memberId=${encodeURIComponent(memberId)}`,
+                  `/api/care-circle/member/details?linkId=${encodeURIComponent(link.id)}`,
                   { cache: "no-store" }
                 );
                 if (!response.ok) return null;
                 const data = (await response.json()) as FamilyMemberDetailsResponse;
-                return { memberId, data };
+                return { link, data };
               } catch {
                 return null;
               }
@@ -817,7 +706,7 @@ export function NotificationsPanel({
           detailResults.forEach((result) => {
             if (!result?.data) return;
             const memberName =
-              nameMap.get(result.memberId) ||
+              result.link.displayName?.trim() ||
               result.data.personal?.display_name?.trim() ||
               "Member";
             const memberAppointments = Array.isArray(result.data.appointments)
@@ -845,8 +734,8 @@ export function NotificationsPanel({
               const diffMs = dateTime.getTime() - nowTime;
               if (diffMs <= 0 || diffMs > ONE_DAY_MS) return;
               appointmentNotifications.push({
-                id: `family-appointment:${result.memberId}:${appointmentId}`,
-                memberId: result.memberId,
+                id: `family-appointment:${result.link.id}:${appointmentId}`,
+                memberId: result.link.id,
                 memberName,
                 appointment: normalizedAppointment,
                 dateTime,
@@ -871,8 +760,8 @@ export function NotificationsPanel({
                   ? medication.id
                   : name;
               medicationNotifications.push({
-                id: `family-medication:${result.memberId}:${medicationId}:${startDate}`,
-                memberId: result.memberId,
+                id: `family-medication:${result.link.id}:${medicationId}:${startDate}`,
+                memberId: result.link.id,
                 memberName,
                 medicationName: name,
                 startDate,
@@ -882,17 +771,17 @@ export function NotificationsPanel({
 
           const sinceIso = new Date(nowTime - ONE_DAY_MS).toISOString();
           const vaultResults = await Promise.all(
-            otherMemberIds.map(async (memberId) => {
+            incomingFamilyLinks.map(async (link) => {
               try {
                 const response = await fetch(
-                  `/api/family/member/vault?memberId=${encodeURIComponent(
-                    memberId
+                  `/api/care-circle/member/vault?linkId=${encodeURIComponent(
+                    link.id
                   )}&category=all&limit=5&includeSigned=0&since=${encodeURIComponent(sinceIso)}`,
                   { cache: "no-store" }
                 );
                 if (!response.ok) return null;
                 const data = (await response.json()) as { files?: FamilyVaultFile[] };
-                return { memberId, files: data.files ?? [] };
+                return { link, files: data.files ?? [] };
               } catch {
                 return null;
               }
@@ -901,7 +790,7 @@ export function NotificationsPanel({
 
           vaultResults.forEach((result) => {
             if (!result?.files?.length) return;
-            const memberName = nameMap.get(result.memberId) || "Member";
+            const memberName = result.link.displayName?.trim() || "Member";
             result.files.forEach((file) => {
               if (!file?.created_at) return;
               const createdAt = file.created_at;
@@ -909,8 +798,8 @@ export function NotificationsPanel({
               if (Number.isNaN(createdTime)) return;
               if (nowTime - createdTime > ONE_DAY_MS) return;
               vaultNotifications.push({
-                id: `family-vault:${result.memberId}:${file.folder}:${file.name}:${createdAt}`,
-                memberId: result.memberId,
+                id: `family-vault:${result.link.id}:${file.folder}:${file.name}:${createdAt}`,
+                memberId: result.link.id,
                 memberName,
                 fileName: file.name,
                 createdAt,
@@ -1862,7 +1751,7 @@ export function NotificationsPanel({
                     <div>
                       <p className="text-sm font-semibold text-slate-800">Request approved</p>
                       <p className="text-xs text-slate-500">
-                        You&apos;re now part of {acceptance.familyName}
+                        {acceptance.familyName} accepted your care circle invite
                       </p>
                     </div>
                     <span className="text-[11px] text-slate-400">

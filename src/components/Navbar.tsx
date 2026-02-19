@@ -5,6 +5,7 @@ import {
   Home,
   User,
   Folder,
+  Menu,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -58,6 +59,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isProfilePickerOpen, setIsProfilePickerOpen] = useState(false);
   const [manageProfilesMode, setManageProfilesMode] = useState(false);
   const [showAddProfileForm, setShowAddProfileForm] = useState(false);
@@ -111,12 +113,20 @@ export default function Navbar() {
 
   const openProfileModal = () => {
     setNotice(null);
+    setMobileMenuOpen(false);
     setIsProfilePickerOpen(true);
   };
 
   const closeProfileModal = () => {
     setIsProfilePickerOpen(false);
     resetProfileModalState();
+  };
+
+  const handleLogout = async () => {
+    setMobileMenuOpen(false);
+    clearSupabaseAuthCookies();
+    await supabase.auth.signOut({ scope: "local" });
+    router.push('/auth/login');
   };
 
   const clearSupabaseAuthCookies = () => {
@@ -366,11 +376,20 @@ export default function Navbar() {
     setDeletingProfileId(profile.id);
     setNotice(null);
 
-    const deletion = await supabase.from('profiles').delete().eq('id', profile.id);
-    if (deletion.error) {
+    const deletionResponse = await fetch('/api/profile/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: profile.id }),
+    });
+
+    const deletionPayload = (await deletionResponse.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+
+    if (!deletionResponse.ok) {
       setNotice({
         type: 'error',
-        text: deletion.error.message || 'Unable to delete profile right now.',
+        text: deletionPayload?.message || 'Unable to delete profile right now.',
       });
       setDeletingProfileId(null);
       return;
@@ -405,46 +424,67 @@ export default function Navbar() {
               <p className="text-sm font-semibold leading-tight">Patient Hub</p>
             </div>
           </button>
-          <div className="flex flex-col items-end gap-2">
-            <button
-              onClick={openProfileModal}
-              className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-teal-100/90 hover:bg-white/10 hover:text-white transition"
-              title={selectedProfileLabel}
-            >
-              Switch Profile
-            </button>
-            <button
-              onClick={async () => {
-                clearSupabaseAuthCookies();
-                await supabase.auth.signOut({ scope: "local" });
-                router.push('/auth/login');
-              }}
-              className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-red-200/90 hover:bg-white/10 hover:text-red-100 transition"
-            >
-              Logout
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navbar-menu"
+            className="rounded-lg border border-white/15 p-2 text-teal-100/90 transition hover:bg-white/10 hover:text-white"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-        <nav className="flex flex-wrap gap-2 px-4 pb-3">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
+        {mobileMenuOpen && (
+          <div
+            id="mobile-navbar-menu"
+            className="border-t border-white/10 px-4 pb-4 pt-3"
+          >
+            <nav className="space-y-1.5">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href;
+                return (
+                  <button
+                    key={item.href}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      router.push(item.href);
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                      isActive
+                        ? 'bg-teal-500/25 text-white'
+                        : 'text-teal-100/85 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="my-3 h-px bg-white/10" />
+            <div className="space-y-1.5">
               <button
-                key={item.href}
-                onClick={() => router.push(item.href)}
-                className={`flex min-w-[8rem] flex-1 items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition ${
-                  isActive
-                    ? 'bg-teal-500/30 text-white'
-                    : 'text-teal-100/80 hover:bg-white/10 hover:text-white'
-                }`}
+                onClick={openProfileModal}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-teal-100/90 transition hover:bg-white/10 hover:text-white"
+                title={selectedProfileLabel}
               >
-                <Icon className="w-4 h-4" />
-                {item.label}
+                <UserRoundCog className="h-4 w-4" />
+                Switch Profile
               </button>
-            );
-          })}
-        </nav>
+              <button
+                onClick={() => {
+                  void handleLogout();
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-200/90 transition hover:bg-white/10 hover:text-red-100"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
+          </div>
+        )}
         {isOnboarding && (
           <div className="px-4 pb-3 text-xs text-teal-100/80">
             Complete onboarding to unlock navigation.
@@ -528,9 +568,7 @@ export default function Navbar() {
 
             <button
               onClick={async () => {
-                clearSupabaseAuthCookies();
-                await supabase.auth.signOut({ scope: "local" });
-                router.push('/auth/login');
+                await handleLogout();
               }}
               title={effectiveCollapsed ? 'Logout' : undefined}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-200/90 hover:bg-white/10 hover:text-red-100 transition"

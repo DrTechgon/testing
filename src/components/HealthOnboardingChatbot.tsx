@@ -472,13 +472,17 @@ export default function HealthOnboardingChatbot() {
       setIsCancellingProfile(true);
       setSaveError(null);
 
-      const { error: deleteError } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", newProfileId);
+      const deleteResponse = await fetch("/api/profile/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: newProfileId }),
+      });
+      const deletePayload = (await deleteResponse.json().catch(() => null)) as
+        | { message?: string }
+        | null;
 
-      if (deleteError) {
-        throw new Error(deleteError.message || "Unable to remove this new profile.");
+      if (!deleteResponse.ok) {
+        throw new Error(deletePayload?.message || "Unable to remove this new profile.");
       }
 
       await refreshProfiles();
