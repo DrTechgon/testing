@@ -112,21 +112,30 @@ export async function POST(request: NextRequest) {
       use_cache,
       force_regenerate,
       max_new_structured_extractions,
+      profile_id,
       user_id
     } = body;
-    
-    if (!user_id) {
+
+    const normalizedProfileId =
+      typeof profile_id === 'string' ? profile_id.trim() : '';
+
+    if (!normalizedProfileId) {
       return NextResponse.json(
-        { success: false, error: 'user_id is required' },
+        { success: false, error: 'profile_id is required' },
         { status: 400 }
       );
     }
-    
-    console.log(`📋 [Next.js API] Action: ${action}, User: ${user_id}`);
+
+    if (user_id && typeof user_id === 'string' && user_id.trim() && user_id.trim() !== normalizedProfileId) {
+      console.warn('⚠️ [Next.js API] Ignoring user_id because profile_id is required for profile-scoped medical calls');
+    }
+
+    console.log(`📋 [Next.js API] Action: ${action}, Profile: ${normalizedProfileId}`);
     
     if (action === 'process') {
       const result = await callFlask('/api/process-files', 'POST', {
-        user_id,
+        profile_id: normalizedProfileId,
+        user_id: normalizedProfileId,
         folder_type: folder_type || 'reports'
       });
       return NextResponse.json(
@@ -137,7 +146,8 @@ export async function POST(request: NextRequest) {
     
     else if (action === 'generate-summary') {
       const result = await callFlask('/api/generate-summary', 'POST', {
-        user_id,
+        profile_id: normalizedProfileId,
+        user_id: normalizedProfileId,
         folder_type,
         use_cache: use_cache !== false,
         force_regenerate: force_regenerate === true,

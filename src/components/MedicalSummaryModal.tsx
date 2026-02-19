@@ -15,7 +15,7 @@ interface MedicalSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   folderType?: string;
-  userId?: string;  // ← ADD THIS
+  userId?: string;
 }
 
 const PUBLIC_BACKEND_BASE_URL = (
@@ -34,7 +34,7 @@ export function MedicalSummaryModal({
   isOpen, 
   onClose, 
   folderType = 'reports',
-  userId: propUserId  // ← ADD THIS
+  userId: propUserId
 }: MedicalSummaryModalProps) {
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -47,31 +47,20 @@ export function MedicalSummaryModal({
 
   console.log('🎭 Modal render - isOpen:', isOpen, 'propUserId:', propUserId, 'stateUserId:', userId);
 
-  // Get user ID from prop or localStorage
+  // Use selected profile ID only (no auth user fallback)
   useEffect(() => {
-    if (propUserId) {
-      console.log('✅ [Modal] Using userId from props:', propUserId);
-      setUserId(propUserId);
+    const normalizedProfileId =
+      typeof propUserId === 'string' ? propUserId.trim() : '';
+
+    if (normalizedProfileId) {
+      console.log('✅ [Modal] Using profileId from props:', normalizedProfileId);
+      setUserId(normalizedProfileId);
+      setError('');
       return;
     }
-    
-    console.log('🔍 [Modal] No userId prop, checking localStorage...');
-    const authData = localStorage.getItem('sb-mhlkzulgpeirtjiopzvu-auth-token');
-    
-    if (authData) {
-      try {
-        const parsed = JSON.parse(authData);
-        const uid = parsed.user?.id || '';
-        setUserId(uid);
-        console.log('✅ [Modal] User ID from localStorage:', uid);
-      } catch (e: unknown) {
-        console.error('❌ [Modal] Parse error:', e);
-        setError('Authentication error. Please log in again.');
-      }
-    } else {
-      console.log('ℹ️ [Modal] No auth data in localStorage - user may need to log in');
-      setError('Please log in to use this feature');
-    }
+
+    setUserId('');
+    setError('Please select a profile first');
   }, [propUserId]);
 
   // Auto-trigger when modal opens AND userId is available
@@ -99,8 +88,8 @@ export function MedicalSummaryModal({
 
   const processFiles = async () => {
     if (!userId) {
-      console.error('❌ [Frontend] No userId available');
-      setError('Please log in to use this feature');
+      console.error('❌ [Frontend] No profileId available');
+      setError('Please select a profile first');
       return false;
     }
 
@@ -109,7 +98,7 @@ export function MedicalSummaryModal({
     
     try {
       console.log('📋 [Frontend] Processing files...');
-      console.log('📋 [Frontend] User ID:', userId);
+      console.log('📋 [Frontend] Profile ID:', userId);
       console.log('📋 [Frontend] Folder type:', folderType);
       
       const response = await fetch('/api/medical', {
@@ -118,6 +107,7 @@ export function MedicalSummaryModal({
         body: JSON.stringify({
           action: 'process',
           folder_type: folderType,
+          profile_id: userId,
           user_id: userId
         }),
       });
@@ -145,8 +135,8 @@ export function MedicalSummaryModal({
 
   const generateSummary = async (): Promise<{ ok: boolean; errorMessage?: string }> => {
     if (!userId) {
-      console.error('❌ [Frontend] No userId for summary generation');
-      const authError = 'Please log in to use this feature';
+      console.error('❌ [Frontend] No profileId for summary generation');
+      const authError = 'Please select a profile first';
       setError(authError);
       return { ok: false, errorMessage: authError };
     }
@@ -156,7 +146,7 @@ export function MedicalSummaryModal({
     
     try {
       console.log('🤖 [Frontend] Generating summary...');
-      console.log('🤖 [Frontend] User ID:', userId);
+      console.log('🤖 [Frontend] Profile ID:', userId);
       
       const response = await fetch('/api/medical', {
         method: 'POST',
@@ -166,6 +156,7 @@ export function MedicalSummaryModal({
           folder_type: folderType,
           use_cache: true,
           force_regenerate: false,
+          profile_id: userId,
           user_id: userId
         }),
       });
