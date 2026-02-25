@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ChatWidget } from '@/components/ChatWidget';
+
 import Colors from '@/constants/Colors';
 import { NotificationPanel } from '@/components/NotificationPanel';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,6 +25,7 @@ import {
   type CareCircleInvite,
   type UpcomingAppointment,
 } from '@/hooks/useNotifications';
+import type { SharedActivityLogRow } from '@/api/modules/carecircle';
 import { type User } from '@/lib/supabase';
 
 // You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
@@ -47,6 +50,7 @@ export default function TabLayout() {
   const tabBarBackground = '#1f2f33';
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#eef7f7',
@@ -118,6 +122,8 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <ChatWidget />
+    </View>
   );
 }
 
@@ -150,9 +156,21 @@ function AppHeader({
     readInvites,
     unreadAcceptances,
     readAcceptances,
+    unreadFamilyActivity,
+    readFamilyActivity,
     hasUnseenNotifications,
     hasHydratedSeen,
     markAllSeen,
+    dismissNotification,
+    activityLogs,
+    logsLoading,
+    logsLoadingMore,
+    logsHasMore,
+    logsError,
+    loadMoreLogs,
+    unreadLogsCount,
+    markLogsSeen,
+    hasHydratedSeenLogs,
   } = notifications;
   const [sessionUnreadAppointments, setSessionUnreadAppointments] = useState<UpcomingAppointment[] | null>(
     null
@@ -161,6 +179,7 @@ function AppHeader({
   const [sessionUnreadAcceptances, setSessionUnreadAcceptances] = useState<CareCircleAcceptance[] | null>(
     null
   );
+  const [sessionUnreadFamilyActivity, setSessionUnreadFamilyActivity] = useState<SharedActivityLogRow[] | null>(null);
   const sessionSnapshotDone = useRef(false);
 
   useEffect(() => {
@@ -189,6 +208,7 @@ function AppHeader({
       setSessionUnreadAppointments(null);
       setSessionUnreadInvites(null);
       setSessionUnreadAcceptances(null);
+      setSessionUnreadFamilyActivity(null);
       return;
     }
     if (sessionSnapshotDone.current) return;
@@ -198,6 +218,7 @@ function AppHeader({
     setSessionUnreadAppointments(unreadAppointments);
     setSessionUnreadInvites(unreadInvites);
     setSessionUnreadAcceptances(unreadAcceptances);
+    setSessionUnreadFamilyActivity(unreadFamilyActivity);
     markAllSeen();
   }, [
     notificationVisible,
@@ -206,6 +227,7 @@ function AppHeader({
     unreadAppointments,
     unreadInvites,
     unreadAcceptances,
+    unreadFamilyActivity,
     markAllSeen,
   ]);
 
@@ -215,6 +237,9 @@ function AppHeader({
   const unreadInvitesDisplay = hasHydratedSeen ? sessionUnreadInvites ?? unreadInvites : [];
   const unreadAcceptancesDisplay = hasHydratedSeen
     ? sessionUnreadAcceptances ?? unreadAcceptances
+    : [];
+  const unreadFamilyActivityDisplay = hasHydratedSeen
+    ? sessionUnreadFamilyActivity ?? unreadFamilyActivity
     : [];
   const sessionUnreadAppointmentIds = useMemo(() => {
     if (!sessionUnreadAppointments) return null;
@@ -228,6 +253,10 @@ function AppHeader({
     if (!sessionUnreadAcceptances) return null;
     return new Set(sessionUnreadAcceptances.map((invite) => invite.id));
   }, [sessionUnreadAcceptances]);
+  const sessionUnreadFamilyActivityIds = useMemo(() => {
+    if (!sessionUnreadFamilyActivity) return null;
+    return new Set(sessionUnreadFamilyActivity.map((log) => log.id));
+  }, [sessionUnreadFamilyActivity]);
   const readAppointmentsDisplay = useMemo(() => {
     if (!hasHydratedSeen) return [];
     if (!sessionUnreadAppointmentIds) return readAppointments;
@@ -243,6 +272,11 @@ function AppHeader({
     if (!sessionUnreadAcceptanceIds) return readAcceptances;
     return readAcceptances.filter((invite) => !sessionUnreadAcceptanceIds.has(invite.id));
   }, [readAcceptances, sessionUnreadAcceptanceIds, hasHydratedSeen]);
+  const readFamilyActivityDisplay = useMemo(() => {
+    if (!hasHydratedSeen) return [];
+    if (!sessionUnreadFamilyActivityIds) return readFamilyActivity;
+    return readFamilyActivity.filter((log) => !sessionUnreadFamilyActivityIds.has(log.id));
+  }, [readFamilyActivity, sessionUnreadFamilyActivityIds, hasHydratedSeen]);
 
   return (
     <>
@@ -321,9 +355,21 @@ function AppHeader({
         readInvites={readInvitesDisplay}
         unreadAcceptances={unreadAcceptancesDisplay}
         readAcceptances={readAcceptancesDisplay}
+        unreadFamilyActivity={unreadFamilyActivityDisplay}
+        readFamilyActivity={readFamilyActivityDisplay}
         notificationsLoading={notificationsLoading}
         notificationsError={notificationsError}
         isHydrated={hasHydratedSeen}
+        dismissNotification={dismissNotification}
+        activityLogs={activityLogs}
+        logsLoading={logsLoading}
+        logsLoadingMore={logsLoadingMore}
+        logsHasMore={logsHasMore}
+        logsError={logsError}
+        loadMoreLogs={loadMoreLogs}
+        unreadLogsCount={unreadLogsCount}
+        markLogsSeen={markLogsSeen}
+        hasHydratedSeenLogs={hasHydratedSeenLogs}
       />
     </>
   );

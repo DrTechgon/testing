@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import {
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -8,6 +10,7 @@ import {
     TextInput,
     View,
     useColorScheme,
+    useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -26,6 +29,7 @@ export default function ManageProfilesScreen() {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const insets = useSafeAreaInsets();
+    const { height } = useWindowDimensions();
 
     const { profiles, updateProfile, deleteProfile } = useProfile();
 
@@ -34,6 +38,7 @@ export default function ManageProfilesScreen() {
     const [editAvatarType, setEditAvatarType] = useState('default');
     const [editAvatarColor, setEditAvatarColor] = useState('#14b8a6');
     const [showAvatarSelector, setShowAvatarSelector] = useState(false);
+    const modalMaxHeight = Math.min(height * 0.9, 620);
 
     const handleEditProfile = (profile: Profile) => {
         setEditingProfile(profile);
@@ -159,65 +164,82 @@ export default function ManageProfilesScreen() {
             {/* Edit Modal */}
             {editingProfile && (
                 <View style={styles.modalOverlay}>
-                    <Animated.View
-                        entering={FadeInUp.springify()}
-                        style={[styles.modalContent, isDark && styles.modalContentDark]}
+                    <KeyboardAvoidingView
+                        style={styles.modalKeyboard}
+                        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                     >
-                        <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>Edit Child Profile</Text>
-                            <Pressable onPress={() => setEditingProfile(null)} hitSlop={8}>
-                                <MaterialCommunityIcons
-                                    name="close"
-                                    size={24}
-                                    color={isDark ? '#e2e8f0' : '#1e293b'}
+                        <Animated.View
+                            entering={FadeInUp.springify()}
+                            style={[
+                                styles.modalContent,
+                                { maxHeight: modalMaxHeight },
+                                isDark && styles.modalContentDark,
+                            ]}
+                        >
+                            <ScrollView
+                                contentContainerStyle={styles.modalScrollContent}
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                            >
+                                <View style={styles.modalHeader}>
+                                    <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>
+                                        Edit Child Profile
+                                    </Text>
+                                    <Pressable onPress={() => setEditingProfile(null)} hitSlop={8}>
+                                        <MaterialCommunityIcons
+                                            name="close"
+                                            size={24}
+                                            color={isDark ? '#e2e8f0' : '#1e293b'}
+                                        />
+                                    </Pressable>
+                                </View>
+
+                                {/* Avatar Preview */}
+                                <View style={styles.avatarPreview}>
+                                    <ProfileAvatar avatarType={editAvatarType} avatarColor={editAvatarColor} size="large" />
+                                    <Pressable style={styles.changeAvatarButton} onPress={() => setShowAvatarSelector(true)}>
+                                        <Text style={styles.changeAvatarText}>Change Avatar</Text>
+                                    </Pressable>
+                                </View>
+
+                                {/* Name Input */}
+                                <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Name</Text>
+                                <TextInput
+                                    style={[styles.input, isDark && styles.inputDark]}
+                                    placeholder="Child Name"
+                                    placeholderTextColor={isDark ? '#94a3b8' : '#94a3b8'}
+                                    value={editName}
+                                    onChangeText={setEditName}
+                                    autoFocus
                                 />
-                            </Pressable>
-                        </View>
 
-                        {/* Avatar Preview */}
-                        <View style={styles.avatarPreview}>
-                            <ProfileAvatar avatarType={editAvatarType} avatarColor={editAvatarColor} size="large" />
-                            <Pressable style={styles.changeAvatarButton} onPress={() => setShowAvatarSelector(true)}>
-                                <Text style={styles.changeAvatarText}>Change Avatar</Text>
-                            </Pressable>
-                        </View>
+                                {editingProfile.is_primary && (
+                                    <View style={styles.infoBox}>
+                                        <MaterialCommunityIcons name="information" size={20} color="#3b82f6" />
+                                        <Text style={styles.infoText}>
+                                            This is your parent profile. It cannot be deleted.
+                                        </Text>
+                                    </View>
+                                )}
 
-                        {/* Name Input */}
-                        <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Name</Text>
-                        <TextInput
-                            style={[styles.input, isDark && styles.inputDark]}
-                            placeholder="Child Name"
-                            placeholderTextColor={isDark ? '#94a3b8' : '#94a3b8'}
-                            value={editName}
-                            onChangeText={setEditName}
-                            autoFocus
-                        />
-
-                        {editingProfile.is_primary && (
-                            <View style={styles.infoBox}>
-                                <MaterialCommunityIcons name="information" size={20} color="#3b82f6" />
-                                <Text style={styles.infoText}>
-                                    This is your parent profile. It cannot be deleted.
-                                </Text>
-                            </View>
-                        )}
-
-                        {/* Buttons */}
-                        <View style={styles.modalButtons}>
-                            <Pressable
-                                style={[styles.modalButton, styles.modalButtonCancel]}
-                                onPress={() => setEditingProfile(null)}
-                            >
-                                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[styles.modalButton, styles.modalButtonConfirm]}
-                                onPress={handleSaveEdit}
-                            >
-                                <Text style={styles.modalButtonTextConfirm}>Save</Text>
-                            </Pressable>
-                        </View>
-                    </Animated.View>
+                                {/* Buttons */}
+                                <View style={styles.modalButtons}>
+                                    <Pressable
+                                        style={[styles.modalButton, styles.modalButtonCancel]}
+                                        onPress={() => setEditingProfile(null)}
+                                    >
+                                        <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+                                    </Pressable>
+                                    <Pressable
+                                        style={[styles.modalButton, styles.modalButtonConfirm]}
+                                        onPress={handleSaveEdit}
+                                    >
+                                        <Text style={styles.modalButtonTextConfirm}>Save</Text>
+                                    </Pressable>
+                                </View>
+                            </ScrollView>
+                        </Animated.View>
+                    </KeyboardAvoidingView>
                 </View>
             )}
 
@@ -355,12 +377,19 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 20,
     },
+    modalKeyboard: {
+        width: '100%',
+        alignItems: 'center',
+    },
     modalContent: {
         backgroundColor: '#ffffff',
         borderRadius: 24,
         padding: 24,
         width: '100%',
         maxWidth: 400,
+    },
+    modalScrollContent: {
+        paddingBottom: 8,
     },
     modalContentDark: {
         backgroundColor: '#1e293b',

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -37,6 +40,9 @@ export function MedicalTeamModal({
   onUpdate,
   onDelete,
 }: Props) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isCompact = windowWidth < 360;
+  const sheetMaxHeight = Math.min(windowHeight - 24, 760);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -106,27 +112,35 @@ export function MedicalTeamModal({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.scrim} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Medical Team</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <MaterialCommunityIcons name="close" size={20} color="#1f2f33" />
-            </Pressable>
-          </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.sheet, { maxHeight: sheetMaxHeight }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Medical Team</Text>
+              <Pressable onPress={onClose} style={styles.closeButton}>
+                <MaterialCommunityIcons name="close" size={20} color="#1f2f33" />
+              </Pressable>
+            </View>
 
-          <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-            <Pressable
-              style={[styles.addToggle, showForm && styles.addToggleActive]}
-              onPress={() => {
-                setShowForm((prev) => !prev);
-                if (showForm) resetForm();
-              }}
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <MaterialCommunityIcons name={showForm ? 'close' : 'plus'} size={18} color="#0f766e" />
-              <Text style={styles.addToggleText}>
-                {showForm ? 'Close' : editingId ? 'Edit Doctor' : 'Add Doctor'}
-              </Text>
-            </Pressable>
+              <Pressable
+                style={[styles.addToggle, showForm && styles.addToggleActive]}
+                onPress={() => {
+                  setShowForm((prev) => !prev);
+                  if (showForm) resetForm();
+                }}
+              >
+                <MaterialCommunityIcons name={showForm ? 'close' : 'plus'} size={18} color="#0f766e" />
+                <Text style={styles.addToggleText}>
+                  {showForm ? 'Close' : editingId ? 'Edit Doctor' : 'Add Doctor'}
+                </Text>
+              </Pressable>
 
             {showForm ? (
               <View style={styles.formCard}>
@@ -161,7 +175,7 @@ export function MedicalTeamModal({
                     style={styles.input}
                   />
                 </View>
-                <View style={styles.formActions}>
+                <View style={[styles.formActions, isCompact && styles.formActionsStacked]}>
                   <Pressable
                     style={styles.secondaryAction}
                     onPress={() => {
@@ -185,34 +199,35 @@ export function MedicalTeamModal({
               </View>
             ) : null}
 
-            {!doctors.length ? (
-              <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="account-heart-outline" size={32} color="#c7d3d6" />
-                <Text style={styles.emptyTitle}>No doctors added</Text>
-                <Text style={styles.emptySubtitle}>Add your medical team for quick access.</Text>
-              </View>
-            ) : (
-              doctors.map((doctor) => (
-                <View key={doctor.id} style={styles.doctorCard}>
-                  <View style={styles.doctorInfo}>
-                    <Text style={styles.doctorName}>{doctor.name}</Text>
-                    <Text style={styles.doctorMeta}>
-                      {doctor.speciality} • {doctor.number}
-                    </Text>
-                  </View>
-                  <View style={styles.cardActions}>
-                    <Pressable onPress={() => handleEdit(doctor)} hitSlop={10}>
-                      <MaterialCommunityIcons name="square-edit-outline" size={18} color="#0f766e" />
-                    </Pressable>
-                    <Pressable onPress={() => handleDelete(doctor.id)} hitSlop={10}>
-                      <MaterialCommunityIcons name="trash-can-outline" size={18} color="#b42318" />
-                    </Pressable>
-                  </View>
+              {!doctors.length ? (
+                <View style={styles.emptyState}>
+                  <MaterialCommunityIcons name="account-heart-outline" size={32} color="#c7d3d6" />
+                  <Text style={styles.emptyTitle}>No doctors added</Text>
+                  <Text style={styles.emptySubtitle}>Add your medical team for quick access.</Text>
                 </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
+              ) : (
+                doctors.map((doctor) => (
+                  <View key={doctor.id} style={styles.doctorCard}>
+                    <View style={styles.doctorInfo}>
+                      <Text style={styles.doctorName}>{doctor.name}</Text>
+                      <Text style={styles.doctorMeta}>
+                        {doctor.speciality} • {doctor.number}
+                      </Text>
+                    </View>
+                    <View style={styles.cardActions}>
+                      <Pressable onPress={() => handleEdit(doctor)} hitSlop={10}>
+                        <MaterialCommunityIcons name="square-edit-outline" size={18} color="#0f766e" />
+                      </Pressable>
+                      <Pressable onPress={() => handleDelete(doctor.id)} hitSlop={10}>
+                        <MaterialCommunityIcons name="trash-can-outline" size={18} color="#b42318" />
+                      </Pressable>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -227,12 +242,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 24, 0.35)',
   },
+  keyboardWrapper: {
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
   sheet: {
     backgroundColor: '#f8fbfb',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingBottom: 24,
-    maxHeight: '86%',
   },
   sheetHeader: {
     paddingHorizontal: 20,
@@ -311,6 +329,9 @@ const styles = StyleSheet.create({
   formActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  formActionsStacked: {
+    flexDirection: 'column',
   },
   primaryAction: {
     flex: 1,

@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -63,6 +74,13 @@ export default function HomeScreen() {
   const [isMedicalTeamOpen, setIsMedicalTeamOpen] = useState(false);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [isMedicationsOpen, setIsMedicationsOpen] = useState(false);
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isProcessingSummary, setIsProcessingSummary] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+  const [summaryError, setSummaryError] = useState('');
+  const [summaryReportCount, setSummaryReportCount] = useState(0);
+  const [isSharingSummary, setIsSharingSummary] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 60_000);
@@ -606,6 +624,118 @@ export default function HomeScreen() {
     );
   };
 
+  const isSummaryLoading = isProcessingSummary || isGeneratingSummary;
+
+  const processMedicalFiles = async () => {
+    if (!profileId) {
+      throw new Error('Please select a profile first.');
+    }
+
+    const data = await apiRequest<{ success: boolean; error?: string }>('/api/medical', {
+      method: 'POST',
+      body: {
+        action: 'process',
+        folder_type: 'reports',
+        profile_id: profileId,
+        user_id: profileId,
+      },
+    });
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to process medical files.');
+    }
+  };
+
+  const generateMedicalSummary = async () => {
+    if (!profileId) {
+      throw new Error('Please select a profile first.');
+    }
+
+    const data = await apiRequest<{
+      success: boolean;
+      summary?: string;
+      report_count?: number;
+      error?: string;
+    }>('/api/medical', {
+      method: 'POST',
+      body: {
+        action: 'generate-summary',
+        folder_type: 'reports',
+        use_cache: true,
+        force_regenerate: false,
+        profile_id: profileId,
+        user_id: profileId,
+      },
+    });
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to generate summary.');
+    }
+
+    setSummaryText(data.summary || '');
+    setSummaryReportCount(data.report_count || 0);
+  };
+
+  const loadSummary = async () => {
+    setSummaryError('');
+    setSummaryText('');
+    setSummaryReportCount(0);
+
+    setIsProcessingSummary(true);
+    try {
+      await processMedicalFiles();
+    } finally {
+      setIsProcessingSummary(false);
+    }
+
+    setIsGeneratingSummary(true);
+    try {
+      await generateMedicalSummary();
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
+  const openSummaryModal = () => {
+    if (!profileId) {
+      Alert.alert('No profile selected', 'Please select a profile first.');
+      return;
+    }
+
+    setIsSummaryModalOpen(true);
+    void loadSummary().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Failed to generate summary.';
+      setSummaryError(message);
+    });
+  };
+
+  const closeSummaryModal = () => {
+    setIsSummaryModalOpen(false);
+    setIsProcessingSummary(false);
+    setIsGeneratingSummary(false);
+    setIsSharingSummary(false);
+    setSummaryText('');
+    setSummaryError('');
+    setSummaryReportCount(0);
+  };
+
+  const shareSummary = async () => {
+    if (!summaryText.trim() || isSharingSummary) return;
+
+    setIsSharingSummary(true);
+    try {
+      await Share.share({
+        title: 'Medical Report Summary',
+        message: summaryText,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unable to share summary.';
+      Alert.alert('Share failed', message);
+    } finally {
+      setIsSharingSummary(false);
+    }
+  };
+
   return (
     <Screen
       innerStyle={styles.screenInner}
@@ -624,7 +754,15 @@ export default function HomeScreen() {
           <Text style={styles.name}>{greetingName}</Text>
 
           <View style={styles.actionStack}>
-            <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}>
+            <Pressable
+              onPress={openSummaryModal}
+              disabled={!profileId}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                !profileId && styles.buttonDisabled,
+                pressed && styles.buttonPressed,
+              ]}
+            >
               <MaterialCommunityIcons name="file-document-outline" size={18} color="#1b2b2f" />
               <Text style={styles.primaryButtonText}>Get Summary</Text>
             </Pressable>
@@ -710,6 +848,99 @@ export default function HomeScreen() {
         onDelete={deleteMedication}
         onLogDose={logMedicationDose}
       />
+
+      <Modal
+        visible={isSummaryModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={closeSummaryModal}
+      >
+        <View style={styles.summaryBackdrop}>
+          <View style={styles.summaryModalCard}>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.summaryTitle}>Medical Report Summary</Text>
+              <Pressable onPress={closeSummaryModal} style={({ pressed }) => [pressed && styles.buttonPressed]}>
+                <MaterialCommunityIcons name="close" size={22} color="#304c51" />
+              </Pressable>
+            </View>
+
+            {summaryReportCount > 0 && (
+              <Text style={styles.summaryMeta}>
+                Analysis of {summaryReportCount} report{summaryReportCount === 1 ? '' : 's'}
+              </Text>
+            )}
+
+            <View style={styles.summaryBody}>
+              {isSummaryLoading && (
+                <View style={styles.summaryStateContainer}>
+                  <ActivityIndicator size="large" color="#2f565f" />
+                  <Text style={styles.summaryStateText}>
+                    {isProcessingSummary
+                      ? 'Processing your reports...'
+                      : 'Generating AI-powered summary...'}
+                  </Text>
+                </View>
+              )}
+
+              {!!summaryError && !isSummaryLoading && (
+                <View style={styles.summaryStateContainer}>
+                  <Text style={styles.summaryErrorText}>{summaryError}</Text>
+                  <Pressable
+                    onPress={() => {
+                      void loadSummary().catch((error: unknown) => {
+                        const message =
+                          error instanceof Error ? error.message : 'Failed to generate summary.';
+                        setSummaryError(message);
+                      });
+                    }}
+                    style={({ pressed }) => [
+                      styles.summaryRetryButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Text style={styles.summaryRetryButtonText}>Try Again</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {!!summaryText && !isSummaryLoading && !summaryError && (
+                <ScrollView
+                  style={styles.summaryScrollView}
+                  contentContainerStyle={styles.summaryScrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <Text style={styles.summaryText}>{summaryText}</Text>
+                </ScrollView>
+              )}
+
+              {!isSummaryLoading && !summaryError && !summaryText && (
+                <View style={styles.summaryStateContainer}>
+                  <Text style={styles.summaryStateText}>No summary available yet.</Text>
+                </View>
+              )}
+            </View>
+
+            {!!summaryText && !isSummaryLoading && !summaryError && (
+              <View style={styles.summaryFooter}>
+                <Pressable
+                  onPress={shareSummary}
+                  disabled={isSharingSummary}
+                  style={({ pressed }) => [
+                    styles.summaryShareButton,
+                    isSharingSummary && styles.buttonDisabled,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <MaterialCommunityIcons name="share-variant-outline" size={18} color="#ffffff" />
+                  <Text style={styles.summaryShareButtonText}>
+                    {isSharingSummary ? 'Sharing...' : 'Share'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -797,6 +1028,109 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  summaryBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  summaryModalCard: {
+    borderRadius: 22,
+    backgroundColor: '#f7fbfb',
+    borderWidth: 1,
+    borderColor: '#d4e0e3',
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dbe7ea',
+    backgroundColor: '#eef5f6',
+  },
+  summaryTitle: {
+    color: '#1d2f33',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  summaryMeta: {
+    color: '#5f7479',
+    fontSize: 13,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+  },
+  summaryBody: {
+    minHeight: 260,
+  },
+  summaryStateContainer: {
+    minHeight: 260,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  summaryStateText: {
+    color: '#4f666b',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  summaryErrorText: {
+    color: '#a61f2f',
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  summaryRetryButton: {
+    marginTop: 8,
+    backgroundColor: '#2f565f',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  summaryRetryButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  summaryScrollView: {
+    maxHeight: 500,
+  },
+  summaryScrollContent: {
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  summaryText: {
+    color: '#2a3f44',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  summaryFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#dbe7ea',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: '#eef5f6',
+  },
+  summaryShareButton: {
+    borderRadius: 999,
+    backgroundColor: '#2f565f',
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  summaryShareButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   cardsGrid: {
     marginTop: 45,

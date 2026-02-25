@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   RefreshControl,
@@ -288,6 +289,9 @@ export default function VaultScreen() {
     start: '',
     end: '',
   });
+  const centeredModalMaxHeight = Math.min(windowHeight - insets.top - insets.bottom - 32, 640);
+  const customDateCardMaxHeight = Math.min(windowHeight - insets.top - insets.bottom - 40, 700);
+  const customDateCalendarMaxHeight = Math.min(windowHeight * 0.5, 420);
 
   // Calculate header height: safe area top + 10px padding + 38px avatar + minimal spacing
   const headerHeight = insets.top + 0.8;
@@ -990,65 +994,81 @@ export default function VaultScreen() {
       <Modal transparent visible={uploadModalOpen} animationType="slide">
         <Animated.View entering={FadeIn} style={styles.modalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setUploadModalOpen(false)} />
-          <Animated.View entering={SlideInDown.springify()} style={styles.uploadSheet}>
-            <View>
-            <Text style={styles.sheetTitle}>Upload document</Text>
-            <Text style={styles.sheetSubtitle}>{uploadDraft.file?.name ?? 'No file selected'}</Text>
-            <TextInput
-              value={uploadDraft.fileName}
-              onChangeText={(value) => setUploadDraft((prev) => ({ ...prev, fileName: value }))}
-              placeholder="File name"
-              placeholderTextColor="#94a3b8"
-              style={styles.sheetInput}
-            />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {categoryOptions
-                .filter((category) => category.key !== 'all')
-                .map((category) => {
-                  const isActive = uploadDraft.category === category.key;
-                  return (
-                    <Pressable
-                      key={category.key}
-                      onPress={() => setUploadDraft((prev) => ({ ...prev, category: category.key }))}
-                      style={[styles.chip, isActive && styles.chipActive]}
-                    >
-                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                        {category.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-            </ScrollView>
-            <AnimatedButton
-              style={[styles.primaryButton, uploading && styles.buttonDisabled]}
-              onPress={handleUpload}
-              disabled={uploading}
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <Animated.View
+              entering={SlideInDown.springify()}
+              style={[styles.uploadSheet, { maxHeight: centeredModalMaxHeight }]}
             >
-              <Text style={styles.primaryButtonText}>{uploading ? 'Uploading...' : 'Upload'}</Text>
-            </AnimatedButton>
-            </View>
-          </Animated.View>
+              <View>
+                <Text style={styles.sheetTitle}>Upload document</Text>
+                <Text style={styles.sheetSubtitle}>{uploadDraft.file?.name ?? 'No file selected'}</Text>
+                <TextInput
+                  value={uploadDraft.fileName}
+                  onChangeText={(value) => setUploadDraft((prev) => ({ ...prev, fileName: value }))}
+                  placeholder="File name"
+                  placeholderTextColor="#94a3b8"
+                  style={styles.sheetInput}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                  {categoryOptions
+                    .filter((category) => category.key !== 'all')
+                    .map((category) => {
+                      const isActive = uploadDraft.category === category.key;
+                      return (
+                        <Pressable
+                          key={category.key}
+                          onPress={() => setUploadDraft((prev) => ({ ...prev, category: category.key }))}
+                          style={[styles.chip, isActive && styles.chipActive]}
+                        >
+                          <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                            {category.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                </ScrollView>
+                <AnimatedButton
+                  style={[styles.primaryButton, uploading && styles.buttonDisabled]}
+                  onPress={handleUpload}
+                  disabled={uploading}
+                >
+                  <Text style={styles.primaryButtonText}>{uploading ? 'Uploading...' : 'Upload'}</Text>
+                </AnimatedButton>
+              </View>
+            </Animated.View>
+          </KeyboardAvoidingView>
         </Animated.View>
       </Modal>
 
       <Modal transparent visible={Boolean(renameFile)} animationType="fade">
         <Animated.View entering={FadeIn} style={styles.centeredOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setRenameFile(null)} />
-          <Animated.View entering={FadeInDown.springify()} style={styles.renameCard}>
-            <View>
-            <Text style={styles.sheetTitle}>Rename document</Text>
-            <TextInput
-              value={renameValue}
-              onChangeText={setRenameValue}
-              placeholder="New file name"
-              placeholderTextColor="#94a3b8"
-              style={styles.sheetInput}
-            />
-            <AnimatedButton style={styles.primaryButton} onPress={handleRename}>
-              <Text style={styles.primaryButtonText}>Save</Text>
-            </AnimatedButton>
-            </View>
-          </Animated.View>
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <Animated.View
+              entering={FadeInDown.springify()}
+              style={[styles.renameCard, { maxHeight: centeredModalMaxHeight }]}
+            >
+              <View>
+                <Text style={styles.sheetTitle}>Rename document</Text>
+                <TextInput
+                  value={renameValue}
+                  onChangeText={setRenameValue}
+                  placeholder="New file name"
+                  placeholderTextColor="#94a3b8"
+                  style={styles.sheetInput}
+                />
+                <AnimatedButton style={styles.primaryButton} onPress={handleRename}>
+                  <Text style={styles.primaryButtonText}>Save</Text>
+                </AnimatedButton>
+              </View>
+            </Animated.View>
+          </KeyboardAvoidingView>
         </Animated.View>
       </Modal>
 
@@ -1090,8 +1110,15 @@ export default function VaultScreen() {
               setCustomDateModalOpen(false);
             }}
           />
-          <Animated.View entering={FadeInDown.springify()} style={styles.customDateCard}>
-            <View>
+          <Animated.View
+            entering={FadeInDown.springify()}
+            style={[styles.customDateCard, { maxHeight: customDateCardMaxHeight }]}
+          >
+            <ScrollView
+              contentContainerStyle={styles.customDateScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.sheetTitle}>Custom Date Range</Text>
               <View style={styles.dateInputContainer}>
                 <View style={styles.rangeSummary}>
@@ -1103,7 +1130,7 @@ export default function VaultScreen() {
                     <Text style={styles.rangeValue}>{rangeLabel}</Text>
                   </View>
                 </View>
-                <View style={styles.calendarWrapper}>
+                <View style={[styles.calendarWrapper, { maxHeight: customDateCalendarMaxHeight }]}>
                   <Calendar
                     markingType="period"
                     markedDates={markedDates}
@@ -1128,35 +1155,35 @@ export default function VaultScreen() {
                 </View>
               </View>
               <View style={styles.customDateActions}>
-              <AnimatedButton
-                style={styles.secondaryButton}
-                onPress={() => {
-                  setCustomRange({ start: '', end: '' });
-                  setDateFilter('all');
-                  setCustomDateModalOpen(false);
-                }}
-              >
-                <Text style={styles.secondaryButtonText}>Clear</Text>
-              </AnimatedButton>
-              <AnimatedButton
-                style={[
-                  styles.primaryButton,
-                  !isRangeValid && styles.buttonDisabled,
-                ]}
-                onPress={() => {
-                  if (!isRangeValid) return;
-                  if (customRange.start && !customRange.end) {
-                    setCustomRange((prev) => ({ ...prev, end: prev.start }));
-                  }
-                  setDateFilter('custom');
-                  setCustomDateModalOpen(false);
-                }}
-                disabled={!isRangeValid}
-              >
-                <Text style={styles.primaryButtonText}>Apply</Text>
-              </AnimatedButton>
+                <AnimatedButton
+                  style={styles.secondaryButton}
+                  onPress={() => {
+                    setCustomRange({ start: '', end: '' });
+                    setDateFilter('all');
+                    setCustomDateModalOpen(false);
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>Clear</Text>
+                </AnimatedButton>
+                <AnimatedButton
+                  style={[
+                    styles.primaryButton,
+                    !isRangeValid && styles.buttonDisabled,
+                  ]}
+                  onPress={() => {
+                    if (!isRangeValid) return;
+                    if (customRange.start && !customRange.end) {
+                      setCustomRange((prev) => ({ ...prev, end: prev.start }));
+                    }
+                    setDateFilter('custom');
+                    setCustomDateModalOpen(false);
+                  }}
+                  disabled={!isRangeValid}
+                >
+                  <Text style={styles.primaryButtonText}>Apply</Text>
+                </AnimatedButton>
               </View>
-            </View>
+            </ScrollView>
           </Animated.View>
         </Animated.View>
       </Modal>
@@ -1388,6 +1415,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
+  modalKeyboard: {
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   previewOverlay: {
     flex: 1,
     backgroundColor: '#eef3f3',
@@ -1573,6 +1605,10 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
+  },
+  customDateScrollContent: {
+    gap: 16,
+    paddingBottom: 4,
   },
   dateInputContainer: {
     gap: 16,

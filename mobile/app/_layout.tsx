@@ -5,6 +5,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/components/useColorScheme';
@@ -55,6 +56,7 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <AuthProvider>
       <ProfileProvider>
         <SafeAreaProvider>
@@ -85,6 +87,7 @@ function RootLayoutNav() {
         </SafeAreaProvider>
       </ProfileProvider>
     </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

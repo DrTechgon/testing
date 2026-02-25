@@ -11,6 +11,15 @@ type OtpVerifyPayload = {
   mode?: "login" | "signup";
 };
 
+const AUTH_LOOKUP_MAX_PAGES = Number.parseInt(
+  process.env.SUPABASE_AUTH_LOOKUP_MAX_PAGES ?? "8",
+  10
+);
+const AUTH_LOOKUP_TIMEOUT_MS = Number.parseInt(
+  process.env.SUPABASE_AUTH_LOOKUP_TIMEOUT_MS ?? "3500",
+  10
+);
+
 const normalizePhone = (raw: string) => {
   const trimmed = raw.trim();
   if (trimmed.startsWith("+")) {
@@ -23,24 +32,35 @@ const normalizePhone = (raw: string) => {
   return trimmed;
 };
 
+const addPhoneVariant = (variants: Set<string>, value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return;
+  variants.add(trimmed);
+  const normalized = normalizePhone(trimmed);
+  if (normalized) {
+    variants.add(normalized);
+  }
+};
+
 const getPhoneVariants = (phone: string) => {
   const normalized = normalizePhone(phone);
   const digits = normalized.replace(/\D/g, "");
   const variants = new Set<string>();
 
-  if (normalized) variants.add(normalized);
-  if (digits) variants.add(`+${digits}`);
-  if (digits) variants.add(digits);
+  addPhoneVariant(variants, phone);
+  addPhoneVariant(variants, normalized);
+  if (digits) addPhoneVariant(variants, `+${digits}`);
+  if (digits) addPhoneVariant(variants, digits);
   if (digits.length === 10) {
-    variants.add(`+91${digits}`);
-    variants.add(`91${digits}`);
+    addPhoneVariant(variants, `+91${digits}`);
+    addPhoneVariant(variants, `91${digits}`);
   }
   if (digits.length === 12 && digits.startsWith("91")) {
-    variants.add(digits.slice(2));
-    variants.add(`+${digits.slice(2)}`);
+    addPhoneVariant(variants, digits.slice(2));
+    addPhoneVariant(variants, `+${digits.slice(2)}`);
   }
 
-  return Array.from(variants).map((value) => normalizePhone(value));
+  return Array.from(variants);
 };
 
 type ExistingProfileRow = {
@@ -82,10 +102,16 @@ const findAuthUserByPhone = async (
   if (normalizedVariants.size === 0) return null;
 
   let page = 1;
+  const startedAt = Date.now();
   const perPage = 1000;
-  const maxPages = 50;
+  const maxPages = Number.isFinite(AUTH_LOOKUP_MAX_PAGES) && AUTH_LOOKUP_MAX_PAGES > 0
+    ? AUTH_LOOKUP_MAX_PAGES
+    : 8;
+  const timeoutMs = Number.isFinite(AUTH_LOOKUP_TIMEOUT_MS) && AUTH_LOOKUP_TIMEOUT_MS > 0
+    ? AUTH_LOOKUP_TIMEOUT_MS
+    : 3500;
 
-  while (page <= maxPages) {
+  while (page <= maxPages && Date.now() - startedAt < timeoutMs) {
     const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
     if (error) {
       throw error;
@@ -105,6 +131,10 @@ const findAuthUserByPhone = async (
       break;
     }
     page += 1;
+  }
+
+  if (page > maxPages || Date.now() - startedAt >= timeoutMs) {
+    console.warn("Auth user phone lookup reached fallback limits.");
   }
 
   return null;
@@ -201,8 +231,20 @@ export async function POST(request: Request) {
     sessionId
   )}/${encodeURIComponent(otp)}`;
 
-  const verifyResponse = await fetch(verifyUrl, { cache: "no-store" });
-  const verifyData = await verifyResponse.json().catch(() => null);
+  let verifyResponse: Response;
+  let verifyData: { Status?: string; Details?: string } | null = null;
+  try {
+    verifyResponse = await fetch(verifyUrl, { cache: "no-store" });
+    verifyData = (await verifyResponse.json().catch(() => null)) as
+      | { Status?: string; Details?: string }
+      | null;
+  } catch (providerError: unknown) {
+    console.error("OTP verification provider request failed:", providerError);
+    return NextResponse.json(
+      { message: "OTP service is temporarily unreachable. Please try again." },
+      { status: 503 }
+    );
+  }
 
   if (!verifyResponse.ok || !verifyData || verifyData.Status !== "Success") {
     return NextResponse.json(
@@ -226,8 +268,9 @@ export async function POST(request: Request) {
 
   try {
     const variants = getPhoneVariants(phone);
-    const authUserByPhone = await findAuthUserByPhone(adminClient, variants);
-    const existingUser = authUserByPhone ?? (await findAuthUserByProfilePhone(adminClient, variants));
+    const userByProfilePhone = await findAuthUserByProfilePhone(adminClient, variants);
+    const authUserByPhone = userByProfilePhone ? null : await findAuthUserByPhone(adminClient, variants);
+    const existingUser = userByProfilePhone ?? authUserByPhone;
 
     if (!existingUser && mode === "login") {
       return NextResponse.json(

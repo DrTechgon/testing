@@ -37,6 +37,21 @@ type LoginClientProps = {
   returnTo: string | null;
 };
 
+const getRequestErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) {
+    const normalizedMessage = error.message.toLowerCase();
+    if (
+      normalizedMessage.includes("failed to fetch") ||
+      normalizedMessage.includes("networkerror") ||
+      normalizedMessage.includes("load failed")
+    ) {
+      return fallback;
+    }
+    return error.message;
+  }
+  return fallback;
+};
+
 export default function LoginClient({ returnTo }: LoginClientProps) {
   const router = useRouter();
   const [phone, setPhone] = useState("");
@@ -192,15 +207,25 @@ export default function LoginClient({ returnTo }: LoginClientProps) {
       return;
     }
 
-    setLoading(true);
-
-    const response = await fetch("/api/auth/otp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: formattedPhone, mode: "login" }),
-    });
-
-    setLoading(false);
+    let response: Response;
+    try {
+      setLoading(true);
+      response = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: formattedPhone, mode: "login" }),
+      });
+    } catch (requestError: unknown) {
+      setError(
+        getRequestErrorMessage(
+          requestError,
+          "Unable to reach the server. Please check your connection and try again."
+        )
+      );
+      return;
+    } finally {
+      setLoading(false);
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
@@ -236,20 +261,30 @@ export default function LoginClient({ returnTo }: LoginClientProps) {
       return;
     }
 
-    setLoading(true);
-
-    const response = await fetch("/api/auth/otp/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phone: formattedPhone,
-        otp,
-        sessionId: otpSessionId,
-        mode: "login",
-      }),
-    });
-
-    setLoading(false);
+    let response: Response;
+    try {
+      setLoading(true);
+      response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: formattedPhone,
+          otp,
+          sessionId: otpSessionId,
+          mode: "login",
+        }),
+      });
+    } catch (requestError: unknown) {
+      setError(
+        getRequestErrorMessage(
+          requestError,
+          "Unable to reach the server. Please check your connection and try again."
+        )
+      );
+      return;
+    } finally {
+      setLoading(false);
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);

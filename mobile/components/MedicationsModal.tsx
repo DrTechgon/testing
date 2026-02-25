@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
@@ -73,6 +76,9 @@ export function MedicationsModal({
   onDelete,
   onLogDose,
 }: Props) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isCompact = windowWidth < 360;
+  const sheetMaxHeight = Math.min(windowHeight - 24, 820);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -203,6 +209,9 @@ export function MedicationsModal({
       }
       resetForm();
       setShowForm(false);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unable to save medication.';
+      Alert.alert('Save failed', message);
     } finally {
       setSaving(false);
     }
@@ -211,7 +220,18 @@ export function MedicationsModal({
   const handleDelete = (id: string) => {
     Alert.alert('Delete medication?', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void onDelete(id) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await onDelete(id);
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unable to delete medication.';
+            Alert.alert('Delete failed', message);
+          }
+        },
+      },
     ]);
   };
 
@@ -271,27 +291,35 @@ export function MedicationsModal({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.scrim} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Medications</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <MaterialCommunityIcons name="close" size={20} color="#1f2f33" />
-            </Pressable>
-          </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.sheet, { maxHeight: sheetMaxHeight }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Medications</Text>
+              <Pressable onPress={onClose} style={styles.closeButton}>
+                <MaterialCommunityIcons name="close" size={20} color="#1f2f33" />
+              </Pressable>
+            </View>
 
-          <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-            <Pressable
-              style={[styles.addToggle, showForm && styles.addToggleActive]}
-              onPress={() => {
-                setShowForm((prev) => !prev);
-                if (showForm) resetForm();
-              }}
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <MaterialCommunityIcons name={showForm ? 'close' : 'plus'} size={18} color="#0f766e" />
-              <Text style={styles.addToggleText}>
-                {showForm ? 'Close Form' : '+ Add Medication'}
-              </Text>
-            </Pressable>
+              <Pressable
+                style={[styles.addToggle, showForm && styles.addToggleActive]}
+                onPress={() => {
+                  setShowForm((prev) => !prev);
+                  if (showForm) resetForm();
+                }}
+              >
+                <MaterialCommunityIcons name={showForm ? 'close' : 'plus'} size={18} color="#0f766e" />
+                <Text style={styles.addToggleText}>
+                  {showForm ? 'Close Form' : '+ Add Medication'}
+                </Text>
+              </Pressable>
 
             {showReminders && !showForm ? (
               <View style={styles.reminderCard}>
@@ -409,7 +437,7 @@ export function MedicationsModal({
                 </View>
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>End date (optional)</Text>
-                  <View style={styles.endDateRow}>
+                  <View style={[styles.endDateRow, isCompact && styles.endDateRowStacked]}>
                     <Pressable
                       style={[styles.dateSelector, styles.endDateSelector]}
                       onPress={() => setShowEndPicker((prev) => !prev)}
@@ -446,7 +474,7 @@ export function MedicationsModal({
                     />
                   ) : null}
                 </View>
-                <View style={styles.formActions}>
+                <View style={[styles.formActions, isCompact && styles.formActionsStacked]}>
                   <Pressable
                     style={styles.secondaryAction}
                     onPress={() => {
@@ -481,6 +509,7 @@ export function MedicationsModal({
                     <Text
                       style={[
                         styles.segmentLabel,
+                        isCompact && styles.segmentLabelCompact,
                         activeTab === 'current' && styles.segmentLabelActive,
                       ]}
                     >
@@ -497,6 +526,7 @@ export function MedicationsModal({
                     <Text
                       style={[
                         styles.segmentLabel,
+                        isCompact && styles.segmentLabelCompact,
                         activeTab === 'completed' && styles.segmentLabelActive,
                       ]}
                     >
@@ -606,8 +636,9 @@ export function MedicationsModal({
                 )}
               </>
             )}
-          </ScrollView>
-        </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -622,12 +653,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 24, 0.35)',
   },
+  keyboardWrapper: {
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
   sheet: {
     backgroundColor: '#f8fbfb',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingBottom: 24,
-    maxHeight: '88%',
   },
   sheetHeader: {
     paddingHorizontal: 20,
@@ -778,6 +812,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  endDateRowStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+  },
   endDateSelector: {
     flex: 1,
   },
@@ -789,6 +828,9 @@ const styles = StyleSheet.create({
   formActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  formActionsStacked: {
+    flexDirection: 'column',
   },
   primaryAction: {
     flex: 1,
@@ -845,6 +887,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#6b7f86',
+  },
+  segmentLabelCompact: {
+    fontSize: 12,
   },
   segmentLabelActive: {
     color: '#0f766e',

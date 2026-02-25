@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -38,6 +41,11 @@ type Props = {
 const createContactId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 export function EmergencyContactsModal({ visible, contacts, onClose, onAdd, onDelete }: Props) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isCompact = windowWidth < 360;
+  const sheetMaxHeight = Math.min(windowHeight - 24, 760);
+  const countryPickerHeight = Math.min(windowHeight * 0.72, 520);
+  const countryListMaxHeight = Math.min(windowHeight * 0.56, 420);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -108,150 +116,169 @@ export function EmergencyContactsModal({ visible, contacts, onClose, onAdd, onDe
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.scrim} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Emergency Contacts</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <MaterialCommunityIcons name="close" size={20} color="#1f2f33" />
-            </Pressable>
-          </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.sheet, { maxHeight: sheetMaxHeight }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Emergency Contacts</Text>
+              <Pressable onPress={onClose} style={styles.closeButton}>
+                <MaterialCommunityIcons name="close" size={20} color="#1f2f33" />
+              </Pressable>
+            </View>
 
-          <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-            <Pressable
-              style={[styles.addToggle, showForm && styles.addToggleActive]}
-              onPress={() => {
-                setShowForm((prev) => !prev);
-                if (showForm) resetForm();
-              }}
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <MaterialCommunityIcons name={showForm ? 'close' : 'plus'} size={18} color="#0f766e" />
-              <Text style={styles.addToggleText}>
-                {showForm ? 'Close' : 'Add Contact'}
-              </Text>
-            </Pressable>
+              <Pressable
+                style={[styles.addToggle, showForm && styles.addToggleActive]}
+                onPress={() => {
+                  setShowForm((prev) => !prev);
+                  if (showForm) resetForm();
+                }}
+              >
+                <MaterialCommunityIcons name={showForm ? 'close' : 'plus'} size={18} color="#0f766e" />
+                <Text style={styles.addToggleText}>
+                  {showForm ? 'Close' : 'Add Contact'}
+                </Text>
+              </Pressable>
 
-            {showForm ? (
-              <View style={styles.formCard}>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Name</Text>
-                  <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="e.g., Mom / John Doe"
-                    placeholderTextColor="#9bb0b5"
-                    style={styles.input}
-                  />
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Phone</Text>
-                  <View style={styles.phoneRow}>
-                    <Pressable
-                      style={styles.countryCodeButton}
-                      onPress={() => setCountryPickerVisible(true)}
-                    >
-                      <Text style={styles.countryCodeText}>{selectedCountry.dialCode}</Text>
-                      <MaterialCommunityIcons name="chevron-down" size={16} color="#39484c" />
-                    </Pressable>
+              {showForm ? (
+                <View style={styles.formCard}>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Name</Text>
                     <TextInput
-                      value={phone}
-                      onChangeText={(value) => setPhone(value.replace(/\D/g, '').slice(0, PHONE_MAX_DIGITS))}
-                      placeholder="e.g., 9876543210"
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="e.g., Mom / John Doe"
                       placeholderTextColor="#9bb0b5"
-                      keyboardType="phone-pad"
-                      style={[styles.input, styles.phoneInput]}
+                      style={styles.input}
                     />
                   </View>
-                  <Modal
-                    visible={countryPickerVisible}
-                    transparent
-                    animationType="slide"
-                    onRequestClose={() => setCountryPickerVisible(false)}
-                  >
-                    <View style={styles.countryModalOverlay}>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Phone</Text>
+                    <View style={[styles.phoneRow, isCompact && styles.phoneRowStacked]}>
                       <Pressable
-                        style={StyleSheet.absoluteFill}
-                        onPress={() => setCountryPickerVisible(false)}
+                        style={styles.countryCodeButton}
+                        onPress={() => setCountryPickerVisible(true)}
+                      >
+                        <Text style={styles.countryCodeText}>{selectedCountry.dialCode}</Text>
+                        <MaterialCommunityIcons name="chevron-down" size={16} color="#39484c" />
+                      </Pressable>
+                      <TextInput
+                        value={phone}
+                        onChangeText={(value) =>
+                          setPhone(value.replace(/\D/g, '').slice(0, PHONE_MAX_DIGITS))
+                        }
+                        placeholder="e.g., 9876543210"
+                        placeholderTextColor="#9bb0b5"
+                        keyboardType="phone-pad"
+                        style={[styles.input, styles.phoneInput]}
                       />
-                      <View style={styles.countryModalContent} pointerEvents="box-none">
-                        <View style={styles.countryModalHeader}>
-                          <Text style={styles.countryModalTitle}>Select country</Text>
-                          <Pressable onPress={() => setCountryPickerVisible(false)} hitSlop={12}>
-                            <Text style={styles.countryModalDone}>Done</Text>
-                          </Pressable>
-                        </View>
-                        <View style={styles.countryListContainer}>
-                          <FlatList
-                            data={COUNTRIES}
-                            keyExtractor={(item) => item.code}
-                            style={styles.countryList}
-                            contentContainerStyle={styles.countryListContent}
-                            showsVerticalScrollIndicator={true}
-                            keyboardShouldPersistTaps="handled"
-                            renderItem={({ item }) => (
-                              <Pressable
-                                style={({ pressed }) => [
-                                  styles.countryItem,
-                                  pressed && styles.countryItemPressed,
-                                ]}
-                                onPress={() => {
-                                  setSelectedCountry(item);
-                                  setCountryPickerVisible(false);
-                                }}
-                              >
-                                <Text style={styles.countryItemText}>
-                                  {item.name} ({item.dialCode})
-                                </Text>
-                              </Pressable>
-                            )}
-                          />
+                    </View>
+                    <Modal
+                      visible={countryPickerVisible}
+                      transparent
+                      animationType="slide"
+                      onRequestClose={() => setCountryPickerVisible(false)}
+                    >
+                      <View style={styles.countryModalOverlay}>
+                        <Pressable
+                          style={StyleSheet.absoluteFill}
+                          onPress={() => setCountryPickerVisible(false)}
+                        />
+                        <View
+                          style={[styles.countryModalContent, { height: countryPickerHeight }]}
+                          pointerEvents="box-none"
+                        >
+                          <View style={styles.countryModalHeader}>
+                            <Text style={styles.countryModalTitle}>Select country</Text>
+                            <Pressable onPress={() => setCountryPickerVisible(false)} hitSlop={12}>
+                              <Text style={styles.countryModalDone}>Done</Text>
+                            </Pressable>
+                          </View>
+                          <View
+                            style={[
+                              styles.countryListContainer,
+                              { maxHeight: countryListMaxHeight },
+                            ]}
+                          >
+                            <FlatList
+                              data={COUNTRIES}
+                              keyExtractor={(item) => item.code}
+                              style={styles.countryList}
+                              contentContainerStyle={styles.countryListContent}
+                              showsVerticalScrollIndicator={true}
+                              keyboardShouldPersistTaps="handled"
+                              renderItem={({ item }) => (
+                                <Pressable
+                                  style={({ pressed }) => [
+                                    styles.countryItem,
+                                    pressed && styles.countryItemPressed,
+                                  ]}
+                                  onPress={() => {
+                                    setSelectedCountry(item);
+                                    setCountryPickerVisible(false);
+                                  }}
+                                >
+                                  <Text style={styles.countryItemText}>
+                                    {item.name} ({item.dialCode})
+                                  </Text>
+                                </Pressable>
+                              )}
+                            />
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  </Modal>
-                </View>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Relation</Text>
-                  <TextInput
-                    value={relation}
-                    onChangeText={setRelation}
-                    placeholder="e.g., Parent / Friend"
-                    placeholderTextColor="#9bb0b5"
-                    style={styles.input}
-                  />
-                </View>
-                <Pressable
-                  style={[styles.primaryAction, saving && styles.buttonDisabled]}
-                  onPress={handleSave}
-                  disabled={saving}
-                >
-                  <Text style={styles.primaryActionText}>{saving ? 'Saving...' : 'Save Contact'}</Text>
-                </Pressable>
-              </View>
-            ) : null}
-
-            {!contacts.length ? (
-              <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="account-alert-outline" size={32} color="#c7d3d6" />
-                <Text style={styles.emptyTitle}>No emergency contacts yet</Text>
-                <Text style={styles.emptySubtitle}>Add someone you trust for SOS alerts.</Text>
-              </View>
-            ) : (
-              contacts.map((contact) => (
-                <View key={contact.id} style={styles.contactCard}>
-                  <View style={styles.contactInfo}>
-                    <Text style={styles.contactName}>{contact.name}</Text>
-                    <Text style={styles.contactMeta}>
-                      {contact.relation} • {contact.phone}
-                    </Text>
+                    </Modal>
                   </View>
-                  <Pressable onPress={() => handleDelete(contact.id)} hitSlop={10}>
-                    <MaterialCommunityIcons name="trash-can-outline" size={18} color="#b42318" />
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Relation</Text>
+                    <TextInput
+                      value={relation}
+                      onChangeText={setRelation}
+                      placeholder="e.g., Parent / Friend"
+                      placeholderTextColor="#9bb0b5"
+                      style={styles.input}
+                    />
+                  </View>
+                  <Pressable
+                    style={[styles.primaryAction, saving && styles.buttonDisabled]}
+                    onPress={handleSave}
+                    disabled={saving}
+                  >
+                    <Text style={styles.primaryActionText}>{saving ? 'Saving...' : 'Save Contact'}</Text>
                   </Pressable>
                 </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
+              ) : null}
+
+              {!contacts.length ? (
+                <View style={styles.emptyState}>
+                  <MaterialCommunityIcons name="account-alert-outline" size={32} color="#c7d3d6" />
+                  <Text style={styles.emptyTitle}>No emergency contacts yet</Text>
+                  <Text style={styles.emptySubtitle}>Add someone you trust for SOS alerts.</Text>
+                </View>
+              ) : (
+                contacts.map((contact) => (
+                  <View key={contact.id} style={styles.contactCard}>
+                    <View style={styles.contactInfo}>
+                      <Text style={styles.contactName}>{contact.name}</Text>
+                      <Text style={styles.contactMeta}>
+                        {contact.relation} • {contact.phone}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => handleDelete(contact.id)} hitSlop={10}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={18} color="#b42318" />
+                    </Pressable>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -266,12 +293,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 24, 0.35)',
   },
+  keyboardWrapper: {
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
   sheet: {
     backgroundColor: '#f8fbfb',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingBottom: 24,
-    maxHeight: '86%',
   },
   sheetHeader: {
     paddingHorizontal: 20,
@@ -351,6 +381,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  phoneRowStacked: {
+    flexDirection: 'column',
+  },
   countryCodeButton: {
     minWidth: 70,
     borderWidth: 1,
@@ -381,8 +414,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    height: '70%',
-    maxHeight: 500,
     paddingBottom: 34,
     overflow: 'hidden',
   },
@@ -409,7 +440,6 @@ const styles = StyleSheet.create({
   countryListContainer: {
     flex: 1,
     minHeight: 0,
-    maxHeight: 360,
   },
   countryList: {
     flex: 1,
